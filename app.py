@@ -95,11 +95,11 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
     with st.chat_message("assistant"):
         p_lower = prompt.lower()
         
-        # 🔴 1. AJAN 1 - CSV Tesis Sorgulama:
-        if any(kw in p_lower for kw in ["saat", "açık", "kapanıyor", "kapanış", "açılış", "kapalı", "havuz", "kütüphane", "tenis", "buz pateni", "bakımevi", "müze", "salon", "tesis", "spor", "nereler", "nerede", "yerler", "liste", "hangileri"]):
-            st.markdown('<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: tesis_bilgisi_sorgula]</b></div>', unsafe_allow_html=True)
-            hesaplanan = tesis_bilgisi_sorgula(prompt)
-            cevap = f"Darıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
+        # 🔴 1. AJAN 1 - TESİS, ÇALIŞMA SAATİ, YER & KURS/DERS SORGULAMA (CSV):
+        if any(kw in p_lower for kw in ["saat", "açık", "kapanıyor", "kapanış", "açılış", "kapalı", "havuz", "kütüphane", "tenis", "buz pateni", "bakımevi", "müze", "salon", "tesis", "spor", "nereler", "nerede", "yerler", "liste", "hangileri", "ders", "kurs", "eğitim"]):
+             st.markdown('<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: tesis_bilgisi_sorgula]</b></div>', unsafe_allow_html=True)
+             hesaplanan = tesis_bilgisi_sorgula(prompt)
+             cevap = f"Darıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
 
         # 🔴 2. AJAN 2 - Tarife Hesaplama:
         elif any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl", "indirim", "hesapla"]):
