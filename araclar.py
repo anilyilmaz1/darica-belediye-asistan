@@ -39,20 +39,27 @@ def darica_hizmet_hesapla(hizmet_tipi: str, parametre: str = "", yas: int = 0) -
 
 
 def tesis_bilgisi_sorgula(sorgu: str) -> str:
-    """CSV veritabanından tesislerin çalışma saatlerini, kapalı günlerini ve ücretlerini getirir."""
+    """CSV veritabanından tesislerin çalışma saatlerini, konum ve ücretlerini getirir."""
     sorgu_lower = sorgu.lower()
     bulunanlar = []
+
+    spor_turleri = ["yüzme havuzu", "fitness", "tenis", "basketbol ve voleybol", "buz pateni"]
 
     try:
         with open("tesisler.csv", mode="r", encoding="utf-8") as file:
             reader = csv.DictReader(file)
             for row in reader:
-                # Tesis adı, türü veya mahalle sorgusu kontrolü
-                if (any(word in row['tesis_adi'].lower() for word in sorgu_lower.split()) or
-                    row['tur'].lower() in sorgu_lower or
-                    row['mahalle'].lower() in sorgu_lower or
-                    "tesis" in sorgu_lower):
-                    
+                tur_lower = row['tur'].lower()
+                
+                # "spor" araması yapıldıysa ve tesis bir spor tesisi ise MATCH
+                spor_eslesmesi = ("spor" in sorgu_lower and any(s in tur_lower for s in spor_turleri))
+                
+                # Kelime bazlı genel eşleşme
+                kelime_eslesmesi = any(word in row['tesis_adi'].lower() for word in sorgu_lower.split() if len(word) > 2) or \
+                                   tur_lower in sorgu_lower or \
+                                   row['mahalle'].lower() in sorgu_lower
+
+                if spor_eslesmesi or kelime_eslesmesi:
                     ucret = "Ücretsiz" if row['aylik_ucret_tl'] == "0" else f"{row['aylik_ucret_tl']} TL/ay"
                     kapali = f" (Kapalı Gün: {row['kapali_gun']})" if row['kapali_gun'].lower() != "yok" else ""
                     
@@ -62,8 +69,7 @@ def tesis_bilgisi_sorgula(sorgu: str) -> str:
                     bulunanlar.append(bilgi)
         
         if bulunanlar:
-            # Tekrarlayan sonuçları engellemek için ilk 3 sonucu döndür
-            return "\n\n".join(bulunanlar[:3])
+            return "\n\n".join(bulunanlar[:5])
         else:
             return "İlgili tesis hakkında veritabanında bilgi bulunamadı. 153 Beyaz Masa hattımızdan destek alabilirsiniz."
             

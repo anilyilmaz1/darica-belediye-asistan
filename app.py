@@ -95,13 +95,13 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
     with st.chat_message("assistant"):
         p_lower = prompt.lower()
         
-        # 🟢 AJAN 1: TESİS & ÇALIŞMA SAATİ SORĞULAMA (CSV)
-        if any(kw in p_lower for kw in ["saat", "açık", "kapanıyor", "kapanış", "açılış", "kapalı", "havuz", "kütüphane", "tenis", "buz pateni", "bakımevi", "müze", "salon", "tesis"]):
+        # 🔴 1. AJAN 1 - CSV Tesis Sorgulama:
+        if any(kw in p_lower for kw in ["saat", "açık", "kapanıyor", "kapanış", "açılış", "kapalı", "havuz", "kütüphane", "tenis", "buz pateni", "bakımevi", "müze", "salon", "tesis", "spor", "nereler", "nerede", "yerler", "liste", "hangileri"]):
             st.markdown('<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: tesis_bilgisi_sorgula]</b></div>', unsafe_allow_html=True)
             hesaplanan = tesis_bilgisi_sorgula(prompt)
             cevap = f"Darıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
 
-        # 🟢 AJAN 2: GENEL HİZMET & TARİFE HESAPLAMA
+        # 🔴 2. AJAN 2 - Tarife Hesaplama:
         elif any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl", "indirim", "hesapla"]):
             yas_match = re.search(r'(\d+)\s*(yaş|yaşında)', p_lower)
             yas = int(yas_match.group(1)) if yas_match else 0
@@ -116,9 +116,9 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             hesaplanan = darica_hizmet_hesapla(hizmet_tipi=hizmet_tipi, parametre=prompt, yas=yas)
             cevap = f"Darıca Belediyesi güncel tarifelerine göre:\n\n**{hesaplanan}**"
 
-        # 🔵 RAG / METİN SORUSU (LLM GENERATION)
+        # 🔵 3. RAG / METİN SORUSU (LLM GENERATION)
         else:
-            system_prompt = f"""Sen Darıca Belediyesi'nin resmi vatandaş asistanısın. Aşağıdaki bağlamı kullanarak soruyu kibarca yanıtla:
+            system_prompt = f"""Sen Darıca Belediyesi'nin resmi vatandaş asistanısın...
 
 [REHBER DÖKÜMANI]
 {rehber_metni[:2000]}
