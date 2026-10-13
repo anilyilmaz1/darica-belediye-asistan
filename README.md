@@ -36,4 +36,5 @@ Bu proje, Darıca Belediyesi hizmetleri, nikah ve tesis ücretleri, idari süre�
 ├── araclar.py       # Dinamik sorgular için fonksiyonlar
 ├── rehber.pdf       # RAG bilgi bankası dokümanı
 ├── requirements.txt # Gerekli Python kütüphaneleri
+├── tesisler.csv     # Tesis çalışma saatleri, konum ve ücret veritabanı
 └── README.md        # Proje tanıtım belgesi
