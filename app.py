@@ -24,7 +24,7 @@ st.markdown("""
     }
     .disclaimer-box {
         background-color: #F3F4F6; padding: 10px; border-radius: 6px;
-        font-size: 0.78rem; color: #FFD700; border-left: 4px solid #6B7280;
+        font-size: 0.78rem; color: #4B5563; border-left: 4px solid #6B7280;
     }
     </style>
 """, unsafe_allow_html=True)
