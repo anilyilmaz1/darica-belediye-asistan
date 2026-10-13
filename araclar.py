@@ -39,27 +39,33 @@ def darica_hizmet_hesapla(hizmet_tipi: str, parametre: str = "", yas: int = 0) -
 
 
 def tesis_bilgisi_sorgula(sorgu: str) -> str:
-    """CSV veritabanından tesislerin çalışma saatlerini, konum ve ücretlerini getirir."""
+    """CSV veritabanından tesislerin çalışma saatlerini, konum, kurs ve ücretlerini getirir."""
     sorgu_lower = sorgu.lower()
     bulunanlar = []
 
-    spor_turleri = ["yüzme havuzu", "fitness", "tenis", "basketbol ve voleybol", "buz pateni"]
+    spor_turleri = ["yüzme", "fitness", "tenis", "basketbol", "voleybol", "buz pateni", "pilates", "spor"]
+    kurs_turleri = ["kurs", "ders", "eğitim", "etüt", "okul", "hazırlık"]
+    
+    # Sorgudan etkisiz kelimeleri ayıkla
+    stop_words = {"için", "peki", "var", "mı", "mi", "mu", "mü", "nerede", "nereler", "ve", "ile", "ne", "nasıl"}
+    sorgu_kelimeleri = [w for w in sorgu_lower.split() if len(w) > 2 and w not in stop_words]
 
     try:
         with open("tesisler.csv", mode="r", encoding="utf-8") as file:
             reader = csv.DictReader(file)
             for row in reader:
-                tur_lower = row['tur'].lower()
-                
-                # "spor" araması yapıldıysa ve tesis bir spor tesisi ise MATCH
-                spor_eslesmesi = ("spor" in sorgu_lower and any(s in tur_lower for s in spor_turleri))
-                
-                # Kelime bazlı genel eşleşme
-                kelime_eslesmesi = any(word in row['tesis_adi'].lower() for word in sorgu_lower.split() if len(word) > 2) or \
-                                   tur_lower in sorgu_lower or \
-                                   row['mahalle'].lower() in sorgu_lower
+                tesis_adi = row['tesis_adi'].lower()
+                tur = row['tur'].lower()
+                mahalle = row['mahalle'].lower()
 
-                if spor_eslesmesi or kelime_eslesmesi:
+                # 1. Genel Kategori Eşleşmeleri
+                spor_eslesmesi = "spor" in sorgu_lower and any(s in tur for s in spor_turleri)
+                kurs_eslesmesi = any(k in sorgu_lower for k in ["kurs", "ders", "eğitim"]) and any(k in tur for k in kurs_turleri)
+                
+                # 2. Kelime Bazlı Detaylı Eşleşme (Tesis adı, türü veya mahallede arama)
+                kelime_eslesmesi = any(w in tesis_adi or w in tur or w in mahalle for w in sorgu_kelimeleri)
+
+                if spor_eslesmesi or kurs_eslesmesi or kelime_eslesmesi:
                     ucret = "Ücretsiz" if row['aylik_ucret_tl'] == "0" else f"{row['aylik_ucret_tl']} TL/ay"
                     kapali = f" (Kapalı Gün: {row['kapali_gun']})" if row['kapali_gun'].lower() != "yok" else ""
                     
@@ -71,7 +77,7 @@ def tesis_bilgisi_sorgula(sorgu: str) -> str:
         if bulunanlar:
             return "\n\n".join(bulunanlar[:5])
         else:
-            return "İlgili tesis hakkında veritabanında bilgi bulunamadı. 153 Beyaz Masa hattımızdan destek alabilirsiniz."
+            return "İlgili tesis veya kurs hakkında veritabanında bilgi bulunamadı. 153 Beyaz Masa hattımızdan destek alabilirsiniz."
             
     except FileNotFoundError:
         return "Tesis bilgi veritabanı (tesisler.csv) bulunamadı."
