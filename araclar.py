@@ -1,9 +1,8 @@
+import csv
+
 def darica_hizmet_hesapla(hizmet_tipi: str, parametre: str = "", yas: int = 0) -> str:
-    """
-    Darıca Belediyesi rehberindeki güncel ücret, indirim ve süre kurallarını hesaplar.
-    """
     hizmet = hizmet_tipi.lower()
-    
+
     # 1. Nikah Ücreti Hesaplama
     if "nikah" in hizmet:
         if "hafta sonu" in parametre.lower():
@@ -37,3 +36,36 @@ def darica_hizmet_hesapla(hizmet_tipi: str, parametre: str = "", yas: int = 0) -
 
     else:
         return "Belirtilen hizmet kategorisi için belediye çağrı merkezimizi (153) arayabilirsiniz."
+
+
+def tesis_bilgisi_sorgula(sorgu: str) -> str:
+    """CSV veritabanından tesislerin çalışma saatlerini, kapalı günlerini ve ücretlerini getirir."""
+    sorgu_lower = sorgu.lower()
+    bulunanlar = []
+
+    try:
+        with open("tesisler.csv", mode="r", encoding="utf-8") as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                # Tesis adı, türü veya mahalle sorgusu kontrolü
+                if (any(word in row['tesis_adi'].lower() for word in sorgu_lower.split()) or
+                    row['tur'].lower() in sorgu_lower or
+                    row['mahalle'].lower() in sorgu_lower or
+                    "tesis" in sorgu_lower):
+                    
+                    ucret = "Ücretsiz" if row['aylik_ucret_tl'] == "0" else f"{row['aylik_ucret_tl']} TL/ay"
+                    kapali = f" (Kapalı Gün: {row['kapali_gun']})" if row['kapali_gun'].lower() != "yok" else ""
+                    
+                    bilgi = (f"📍 **{row['tesis_adi']}** ({row['tur'].capitalize()} - {row['mahalle']} Mah.)\n"
+                             f"⏰ Çalışma Saatleri: {row['acilis']} - {row['kapanis']}{kapali}\n"
+                             f"💰 Ücret: {ucret}")
+                    bulunanlar.append(bilgi)
+        
+        if bulunanlar:
+            # Tekrarlayan sonuçları engellemek için ilk 3 sonucu döndür
+            return "\n\n".join(bulunanlar[:3])
+        else:
+            return "İlgili tesis hakkında veritabanında bilgi bulunamadı. 153 Beyaz Masa hattımızdan destek alabilirsiniz."
+            
+    except FileNotFoundError:
+        return "Tesis bilgi veritabanı (tesisler.csv) bulunamadı."

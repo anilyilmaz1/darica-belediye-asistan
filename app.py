@@ -5,7 +5,7 @@ from peft import PeftModel
 import pypdf
 import os
 import re
-from araclar import darica_hizmet_hesapla
+from araclar import darica_hizmet_hesapla, tesis_bilgisi_sorgula
 
 st.set_page_config(
     page_title="Darıca Belediyesi Akıllı Vatandaş Asistanı",
@@ -33,13 +33,13 @@ st.markdown("""
 with st.sidebar:
     st.title("🏛️ Darıca-Asistan")
     st.markdown("**Geliştirici:** Anıl Yılmaz")
-    st.markdown("**Sürüm:** QLoRA + RAG + Tool Calling")
+    st.markdown("**Sürüm:** QLoRA + RAG + Multi-Agent Tooling")
     st.divider()
     
     st.subheader("💡 Deneyebileceğiniz Sorular")
+    st.caption("• Sahil Spor Salonu kaça kadar açık?")
+    st.caption("• Yüzme havuzu hangi gün kapalı ve ücreti ne kadar?")
     st.caption("• Hafta sonu nikah kıydırma ücreti ne kadar?")
-    st.caption("• Su kesintisi sonrası açma ücreti nedir?")
-    st.caption("• Sokak hayvanı sahiplendirme günleri ne zaman?")
     st.caption("• 70 yaşındaki biri spor tesisinden indirimli faydalanabilir mi?")
     
     st.divider()
@@ -55,7 +55,6 @@ st.markdown('<p class="main-title">🏛️ Darıca Belediyesi Akıllı Vatandaş
 # RAG & Model Yükleyici
 @st.cache_resource
 def kaynaklari_yukle():
-    # PDF Oku ve Martıkent İfadelerini Darıca Yap
     pdf_text = ""
     if os.path.exists("rehber.pdf"):
         reader = pypdf.PdfReader("rehber.pdf")
@@ -81,7 +80,7 @@ with st.spinner("Model ve Darıca Hizmet Rehberi yükleniyor..."):
 
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "content": "Merhaba Sayın Vatandaşımız! Darıca Belediyesi hizmetleri, ücret tarifeleri veya başvurular hakkında size nasıl yardımcı olabilirim?"}
+        {"role": "assistant", "content": "Merhaba Sayın Vatandaşımız! Darıca Belediyesi hizmetleri, tesislerimiz, çalışma saatleri veya başvuru ücretleri hakkında size nasıl yardımcı olabilirim?"}
     ]
 
 for msg in st.session_state.messages:
@@ -96,12 +95,17 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
     with st.chat_message("assistant"):
         p_lower = prompt.lower()
         
-        # 🟢 AJAN / TOOL CALLING TETİKLEME KONTROLÜ
-        if any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl", "indirim", "hesapla"]):
+        # 🟢 AJAN 1: TESİS & ÇALIŞMA SAATİ SORĞULAMA (CSV)
+        if any(kw in p_lower for kw in ["saat", "açık", "kapanıyor", "kapanış", "açılış", "kapalı", "havuz", "kütüphane", "tenis", "buz pateni", "bakımevi", "müze", "salon", "tesis"]):
+            st.markdown('<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: tesis_bilgisi_sorgula]</b></div>', unsafe_allow_html=True)
+            hesaplanan = tesis_bilgisi_sorgula(prompt)
+            cevap = f"Darıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
+
+        # 🟢 AJAN 2: GENEL HİZMET & TARİFE HESAPLAMA
+        elif any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl", "indirim", "hesapla"]):
             yas_match = re.search(r'(\d+)\s*(yaş|yaşında)', p_lower)
             yas = int(yas_match.group(1)) if yas_match else 0
             
-            # Hizmet Türü Belirleme
             hizmet_tipi = "genel"
             if "nikah" in p_lower: hizmet_tipi = "nikah"
             elif "otopark" in p_lower: hizmet_tipi = "otopark"
@@ -109,10 +113,9 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             elif "su" in p_lower: hizmet_tipi = "su"
             
             st.markdown(f'<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: darica_hizmet_hesapla]</b> (Hizmet: {hizmet_tipi})</div>', unsafe_allow_html=True)
-            
             hesaplanan = darica_hizmet_hesapla(hizmet_tipi=hizmet_tipi, parametre=prompt, yas=yas)
             cevap = f"Darıca Belediyesi güncel tarifelerine göre:\n\n**{hesaplanan}**"
-            
+
         # 🔵 RAG / METİN SORUSU (LLM GENERATION)
         else:
             system_prompt = f"""Sen Darıca Belediyesi'nin resmi vatandaş asistanısın. Aşağıdaki bağlamı kullanarak soruyu kibarca yanıtla:
