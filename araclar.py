@@ -59,14 +59,13 @@ def darica_hizmet_hesapla(hizmet_tipi: str, parametre: str = "", yas: int = 0) -
         return "Belirtilen hizmet kategorisi için belediye çağrı merkezimizi (153) arayabilirsiniz."
 
 def tesis_bilgisi_sorgula(sorgu: str) -> str:
-    """CSV veritabanından tesislerin çalışma saatlerini, konum, kurs ve ücretlerini getirir."""
+    """CSV veritabanından tesislerin çalışma saatlerini, konum, ders/kurs ve ücretlerini getirir."""
     sorgu_lower = sorgu.lower()
-    bulunanlar = []
-
-    spor_turleri = ["yüzme", "fitness", "tenis", "basketbol", "voleybol", "buz pateni", "pilates", "spor"]
-    kurs_turleri = ["kurs", "ders", "eğitim", "etüt", "okul", "hazırlık"]
     
-    # Sorgudan etkisiz kelimeleri ayıkla
+    akademik_ve_kutuphane = []
+    spor_ve_kurslar = []
+    diger_tesisler = []
+
     stop_words = {"için", "peki", "var", "mı", "mi", "mu", "mü", "nerede", "nereler", "ve", "ile", "ne", "nasıl"}
     sorgu_kelimeleri = [w for w in sorgu_lower.split() if len(w) > 2 and w not in stop_words]
 
@@ -78,26 +77,42 @@ def tesis_bilgisi_sorgula(sorgu: str) -> str:
                 tur = row['tur'].lower()
                 mahalle = row['mahalle'].lower()
 
-                # 1. Genel Kategori Eşleşmeleri
-                spor_eslesmesi = "spor" in sorgu_lower and any(s in tur for s in spor_turleri)
-                kurs_eslesmesi = any(k in sorgu_lower for k in ["kurs", "ders", "eğitim"]) and any(k in tur for k in kurs_turleri)
+                ucret = "Ücretsiz" if row['aylik_ucret_tl'] == "0" else f"{row['aylik_ucret_tl']} TL/ay"
+                kapali = f" (Kapalı Gün: {row['kapali_gun']})" if row['kapali_gun'].lower() != "yok" else ""
                 
-                # 2. Kelime Bazlı Detaylı Eşleşme (Tesis adı, türü veya mahallede arama)
-                kelime_eslesmesi = any(w in tesis_adi or w in tur or w in mahalle for w in sorgu_kelimeleri)
+                bilgi = (f"📍 **{row['tesis_adi']}** ({row['tur'].capitalize()} - {row['mahalle']} Mah.)\n"
+                         f"⏰ Çalışma Saatleri: {row['acilis']} - {row['kapanis']}{kapali}\n"
+                         f"💰 Ücret: {ucret}")
 
-                if spor_eslesmesi or kurs_eslesmesi or kelime_eslesmesi:
-                    ucret = "Ücretsiz" if row['aylik_ucret_tl'] == "0" else f"{row['aylik_ucret_tl']} TL/ay"
-                    kapali = f" (Kapalı Gün: {row['kapali_gun']})" if row['kapali_gun'].lower() != "yok" else ""
-                    
-                    bilgi = (f"📍 **{row['tesis_adi']}** ({row['tur'].capitalize()} - {row['mahalle']} Mah.)\n"
-                             f"⏰ Çalışma Saatleri: {row['acilis']} - {row['kapanis']}{kapali}\n"
-                             f"💰 Ücret: {ucret}")
-                    bulunanlar.append(bilgi)
-        
-        if bulunanlar:
-            return "\n\n".join(bulunanlar[:5])
+                # Kelime veya genel sorgu eşleşmesi
+                kelime_eslesmesi = any(w in tesis_adi or w in tur or w in mahalle for w in sorgu_kelimeleri)
+                genel_eslesme = any(k in sorgu_lower for k in ["ders", "kurs", "eğitim", "etüt", "kütüphane", "spor"])
+
+                if kelime_eslesmesi or genel_eslesme:
+                    # Kütüphane, etüt, YKS ve kültür/tiyatro kurslarını öncelikli akademik kategoriye al
+                    if any(k in tur for k in ["kütüphane", "etüt", "yks", "tiyatro", "enstrüman"]):
+                        akademik_ve_kutuphane.append(bilgi)
+                    # Spor branşları ve derslerini spor kategorisine al
+                    elif any(s in tur for s in ["yüzme", "fitness", "tenis", "basketbol", "voleybol", "buz pateni", "pilates", "spor"]):
+                        spor_ve_kurslar.append(bilgi)
+                    else:
+                        diger_tesisler.append(bilgi)
+
+        # "ders", "kütüphane", "etüt", "yks" arandığında Ders Çalışma & Kütüphaneleri ÜSTE AL
+        if any(k in sorgu_lower for k in ["ders", "etüt", "kütüphane", "yks", "okuma", "çalışma"]):
+            sonuc = []
+            if akademik_ve_kutuphane:
+                sonuc.append("📚 **Ders Çalışma Alanları, Kütüphaneler ve Eğitim Kursları:**\n\n" + "\n\n".join(akademik_ve_kutuphane))
+            if spor_ve_kurslar:
+                sonuc.append("🏋️ **Spor Dersleri ve Kursları:**\n\n" + "\n\n".join(spor_ve_kurslar[:3]))
+            return "\n\n---\n\n".join(sonuc) if sonuc else "İlgili ders veya tesis hakkında bilgi bulunamadı."
+
+        elif "spor" in sorgu_lower or any(s in sorgu_lower for s in ["yüzme", "fitness", "tenis", "paten"]):
+            return "🏋️ **Spor Tesisleri ve Kursları:**\n\n" + "\n\n".join(spor_ve_kurslar) if spor_ve_kurslar else "İlgili spor tesisi bulunamadı."
+
         else:
-            return "İlgili tesis veya kurs hakkında veritabanında bilgi bulunamadı. 153 Beyaz Masa hattımızdan destek alabilirsiniz."
-            
+            tum_sonuclar = akademik_ve_kutuphane + spor_ve_kurslar + diger_tesisler
+            return "\n\n".join(tum_sonuclar[:5]) if tum_sonuclar else "İlgili tesis hakkında bilgi bulunamadı."
+
     except FileNotFoundError:
         return "Tesis bilgi veritabanı (tesisler.csv) bulunamadı."
