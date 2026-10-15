@@ -97,18 +97,11 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
 
     with st.chat_message("assistant"):
         p_lower = prompt.lower()
+        yas_match = re.search(r'(\d+)\s*(yaş|yaşında)', p_lower)
+        yas = int(yas_match.group(1)) if yas_match else 0
         
-        # 🔴 1. AJAN 1 - TESİS, ÇALIŞMA SAATİ, YER & KURS/DERS SORGULAMA (CSV):
-        if any(kw in p_lower for kw in ["saat", "açık", "kapanıyor", "kapanış", "açılış", "kapalı", "havuz", "kütüphane", "tenis", "buz pateni", "bakımevi", "müze", "salon", "tesis", "spor", "nereler", "nerede", "yerler", "liste", "hangileri", "ders", "kurs", "eğitim"]):
-            st.markdown('<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: tesis_bilgisi_sorgula]</b></div>', unsafe_allow_html=True)
-            hesaplanan = tesis_bilgisi_sorgula(prompt)
-            cevap = f"Darıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
-
-        # 🔴 2. AJAN 2 - Tarife & İndirim & Atık Yağ Hesaplama:
-        elif any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl", "indirim", "hesapla", "atık", "yağ", "deterjan"]):
-            yas_match = re.search(r'(\d+)\s*(yaş|yaşında)', p_lower)
-            yas = int(yas_match.group(1)) if yas_match else 0
-            
+        # 🔴 1. ÖNCELİK: AJAN 2 - Tarife, İndirim, Yaş & Atık Yağ Hesaplama
+        if any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl", "indirim", "hesapla", "atık", "yağ", "deterjan"]) or yas > 0:
             hizmet_tipi = "genel"
             if "nikah" in p_lower: hizmet_tipi = "nikah"
             elif "otopark" in p_lower or "karavan" in p_lower: hizmet_tipi = "otopark"
@@ -120,7 +113,13 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             hesaplanan = darica_hizmet_hesapla(hizmet_tipi=hizmet_tipi, parametre=prompt, yas=yas)
             cevap = f"Darıca Belediyesi güncel tarifelerine göre:\n\n**{hesaplanan}**"
 
-        # 🔵 3. RAG / METİN SORUSU (LLM GENERATION)
+        # 🔴 2. ÖNCELİK: AJAN 1 - Tesis, Çalışma Saati, Yer & Ders Sorgulama (CSV)
+        elif any(kw in p_lower for kw in ["saat", "açık", "kapanıyor", "kapanış", "açılış", "kapalı", "havuz", "kütüphane", "tenis", "buz pateni", "bakımevi", "müze", "salon", "tesis", "spor", "nereler", "nerede", "yerler", "liste", "hangileri", "ders", "kurs", "eğitim"]):
+            st.markdown('<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: tesis_bilgisi_sorgula]</b></div>', unsafe_allow_html=True)
+            hesaplanan = tesis_bilgisi_sorgula(prompt)
+            cevap = f"Darıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
+
+        # 🔵 3. ÖNCELİK: RAG / METİN SORUSU (LLM GENERATION)
         else:
             messages = [
                 {
@@ -135,7 +134,6 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                 {"role": "user", "content": prompt}
             ]
             
-            # Format chat prompt using model's template
             prompt_str = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
             inputs = tokenizer(prompt_str, return_tensors="pt")
             
@@ -148,8 +146,8 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                     max_new_tokens=256,
                     temperature=0.2,
                     top_p=0.9,
-                    repetition_penalty=1.2,       # DÖNGÜYE GİRMEYİ KESER
-                    no_repeat_ngram_size=3,       # METİN TEKRARINI ENGELLER
+                    repetition_penalty=1.2,
+                    no_repeat_ngram_size=3,
                     do_sample=True,
                     eos_token_id=tokenizer.eos_token_id,
                     pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
@@ -158,6 +156,5 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             cevap = tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True).strip()
             if not cevap:
                 cevap = "Konu hakkında detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
-
         st.markdown(cevap)
         st.session_state.messages.append({"role": "assistant", "content": cevap})
