@@ -114,7 +114,8 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             cevap = f"Darıca Belediyesi güncel tarifelerine göre:\n\n**{hesaplanan}**"
 
         # 🔴 2. ÖNCELİK: AJAN 1 - Tesis, Çalışma Saati, Yer & Ders Sorgulama (CSV)
-        elif any(kw in p_lower for kw in ["saat", "açık", "kapanıyor", "kapanış", "açılış", "kapalı", "havuz", "kütüphane", "tenis", "buz pateni", "bakımevi", "müze", "salon", "tesis", "spor", "nereler", "nerede", "yerler", "liste", "hangileri", "ders", "kurs", "eğitim"]):
+        # "çöp" içeren sorular tesis ajanına takılmadan RAG'e gitsin diye istisna eklendi
+        elif "çöp" not in p_lower and any(kw in p_lower for kw in ["çalışma saati", "saat kaç", "kaça kadar", "açık", "kapanıyor", "kapanış", "açılış", "kapalı", "havuz", "kütüphane", "tenis", "buz pateni", "bakımevi", "müze", "salon", "tesis", "spor", "nereler", "nerede", "yerler", "liste", "hangileri", "ders", "kurs", "eğitim"]):
             st.markdown('<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: tesis_bilgisi_sorgula]</b></div>', unsafe_allow_html=True)
             hesaplanan = tesis_bilgisi_sorgula(prompt)
             cevap = f"Darıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
@@ -144,7 +145,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                 outputs = model.generate(
                     **inputs,
                     max_new_tokens=150,
-                    do_sample=False,               # Greedy Search: Modelin bozuk hece uydurmasını kesin olarak engeller
+                    do_sample=False,               # Greedy Search: Bozuk kelime türetmeyi engeller
                     repetition_penalty=1.2,
                     eos_token_id=tokenizer.eos_token_id,
                     pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
@@ -153,7 +154,6 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             cevap = tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True).strip()
             
             # --- OTOMATİK METİN TEMİZLEME (Post-Processing) ---
-            # Model yine de hepsi büyük harf üretirse standart cümle düzenine çevirir
             if cevap.isupper():
                 cevap = cevap.capitalize()
                 
