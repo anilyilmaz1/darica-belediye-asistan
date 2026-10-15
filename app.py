@@ -126,9 +126,10 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                 {
                     "role": "system",
                     "content": (
-                        "Sen Darıca Belediyesi'nin resmi akıllı vatandaş asistanısın. "
-                        "Aşağıda verilen rehber dökümanındaki bilgilere dayanarak kullanıcının sorusuna kısa, net, düzgün Türkçe ile cevap ver.\n"
-                        "Rehberde bulunmayan konular için 'Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz.' de.\n\n"
+                        "Sen Darıca Belediyesi'nin resmi vatandaş asistanısın. "
+                        "Sadece aşağıda verilen rehber dökümanındaki bilgilere göre cevap ver. "
+                        "Rehberde bulunmayan veya belediye hizmetleri dışındaki sorular için SADECE şu cümleyi söyle: "
+                        "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz.\n\n"
                         f"[REHBER DÖKÜMANI]\n{rehber_metni}\n[BAĞLAM SONU]"
                     )
                 },
@@ -146,18 +147,25 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                     **inputs,
                     max_new_tokens=150,
                     do_sample=False,
-                    repetition_penalty=1.0,  # 🔴 1.2 YERİNE 1.0 YAPILDI (PDF'teki kelimeleri olduğu gibi rahatça kullanabilmesi için)
+                    repetition_penalty=1.0,
                     eos_token_id=tokenizer.eos_token_id,
                     pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
                 )
                 
             cevap = tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True).strip()
             
+            # --- GÜVENLİK VE METİN TEMİZLEME (Guardrails) ---
+            # Model prompt sızdırırsa veya halüsinatif kelimeler üretirse varsayılan mesaja zorlar
+            p_check = cevap.lower()
+            if any(bad in p_check for bad in ["asistanısın", "darıcakent", "bilmediğin için", "uygulamasını kullan"]):
+                cevap = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
+                
             if cevap.isupper():
                 cevap = cevap.capitalize()
                 
             if not cevap:
-                cevap = "Konu hakkında detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
+                cevap = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
 
+                
         st.markdown(cevap)
         st.session_state.messages.append({"role": "assistant", "content": cevap})
