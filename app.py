@@ -41,6 +41,7 @@ with st.sidebar:
     st.caption("• Yüzme havuzu hangi gün kapalı ve ücreti ne kadar?")
     st.caption("• Hafta sonu nikah kıydırma ücreti ne kadar?")
     st.caption("• 70 yaşındaki biri spor tesisinden indirimli faydalanabilir mi?")
+    st.caption("• 5 litre atık yağ getirince ne veriliyor?")
     
     st.divider()
     st.markdown("""
@@ -59,7 +60,9 @@ def kaynaklari_yukle():
     if os.path.exists("rehber.pdf"):
         reader = pypdf.PdfReader("rehber.pdf")
         for page in reader.pages:
-            pdf_text += page.extract_text() + "\n"
+            extracted = page.extract_text()
+            if extracted:
+                pdf_text += extracted + "\n"
         pdf_text = pdf_text.replace("Martıkent", "Darıca")
         
     repo_id = "Anil-yilmaz/Darica-Belediye-3B"
@@ -97,20 +100,21 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
         
         # 🔴 1. AJAN 1 - TESİS, ÇALIŞMA SAATİ, YER & KURS/DERS SORGULAMA (CSV):
         if any(kw in p_lower for kw in ["saat", "açık", "kapanıyor", "kapanış", "açılış", "kapalı", "havuz", "kütüphane", "tenis", "buz pateni", "bakımevi", "müze", "salon", "tesis", "spor", "nereler", "nerede", "yerler", "liste", "hangileri", "ders", "kurs", "eğitim"]):
-             st.markdown('<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: tesis_bilgisi_sorgula]</b></div>', unsafe_allow_html=True)
-             hesaplanan = tesis_bilgisi_sorgula(prompt)
-             cevap = f"Darıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
+            st.markdown('<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: tesis_bilgisi_sorgula]</b></div>', unsafe_allow_html=True)
+            hesaplanan = tesis_bilgisi_sorgula(prompt)
+            cevap = f"Darıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
 
-        # 🔴 2. AJAN 2 - Tarife Hesaplama:
-        elif any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl", "indirim", "hesapla"]):
+        # 🔴 2. AJAN 2 - Tarife & İndirim & Atık Yağ Hesaplama:
+        elif any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl", "indirim", "hesapla", "atık", "yağ", "deterjan"]):
             yas_match = re.search(r'(\d+)\s*(yaş|yaşında)', p_lower)
             yas = int(yas_match.group(1)) if yas_match else 0
             
             hizmet_tipi = "genel"
             if "nikah" in p_lower: hizmet_tipi = "nikah"
-            elif "otopark" in p_lower: hizmet_tipi = "otopark"
-            elif "spor" in p_lower or "tesis" in p_lower or "kültür" in p_lower: hizmet_tipi = "spor"
+            elif "otopark" in p_lower or "karavan" in p_lower: hizmet_tipi = "otopark"
+            elif "spor" in p_lower or "tesis" in p_lower or "kültür" in p_lower or "salon" in p_lower: hizmet_tipi = "spor"
             elif "su" in p_lower: hizmet_tipi = "su"
+            elif "atık" in p_lower or "yağ" in p_lower: hizmet_tipi = "atık"
             
             st.markdown(f'<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: darica_hizmet_hesapla]</b> (Hizmet: {hizmet_tipi})</div>', unsafe_allow_html=True)
             hesaplanan = darica_hizmet_hesapla(hizmet_tipi=hizmet_tipi, parametre=prompt, yas=yas)
@@ -118,24 +122,41 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
 
         # 🔵 3. RAG / METİN SORUSU (LLM GENERATION)
         else:
-            system_prompt = f"""Sen Darıca Belediyesi'nin resmi vatandaş asistanısın...
-
-[REHBER DÖKÜMANI]
-{rehber_metni[:2000]}
-[BAĞLAM SONU]
-
-Soru: {prompt}
-Yanıt:"""
-
-            inputs = tokenizer(system_prompt, return_tensors="pt")
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "Sen Darıca Belediyesi'nin resmi akıllı vatandaş asistanısın. "
+                        "Aşağıda verilen rehber dökümanındaki bilgilere dayanarak kullanıcının sorusuna kısa, net, doğru ve Türkçe cevap ver. "
+                        "Rehberde bulunmayan konular için 'Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz.' de.\n\n"
+                        f"[REHBER DÖKÜMANI]\n{rehber_metni}\n[BAĞLAM SONU]"
+                    )
+                },
+                {"role": "user", "content": prompt}
+            ]
+            
+            # Format chat prompt using model's template
+            prompt_str = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            inputs = tokenizer(prompt_str, return_tensors="pt")
+            
             if torch.cuda.is_available():
                 inputs = inputs.to("cuda")
                 
             with torch.no_grad():
-                outputs = model.generate(**inputs, max_new_tokens=200, temperature=0.2)
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=256,
+                    temperature=0.2,
+                    top_p=0.9,
+                    repetition_penalty=1.2,       # DÖNGÜYE GİRMEYİ KESER
+                    no_repeat_ngram_size=3,       # METİN TEKRARINI ENGELLER
+                    do_sample=True,
+                    eos_token_id=tokenizer.eos_token_id,
+                    pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+                )
                 
-            cevap = tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
-            if not cevap.strip():
+            cevap = tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True).strip()
+            if not cevap:
                 cevap = "Konu hakkında detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
 
         st.markdown(cevap)
