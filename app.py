@@ -100,7 +100,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
         yas_match = re.search(r'(\d+)\s*(yaş|yaşında)', p_lower)
         yas = int(yas_match.group(1)) if yas_match else 0
         
-        # 🔴 1. ÖNCELİK: AJAN 2 - Tarife, İndirim, Yaş & Atık Yağ Hesaplama
+        # 🔴 1. ÖNCELİK: AJAN 1 - Tarife, İndirim, Yaş & Atık Yağ Hesaplama
         if any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl", "indirim", "hesapla", "atık", "yağ", "deterjan"]) or yas > 0:
             hizmet_tipi = "genel"
             if "nikah" in p_lower: hizmet_tipi = "nikah"
@@ -113,7 +113,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             hesaplanan = darica_hizmet_hesapla(hizmet_tipi=hizmet_tipi, parametre=prompt, yas=yas)
             cevap = f"Darıca Belediyesi güncel tarifelerine göre:\n\n**{hesaplanan}**"
 
-        # 🔴 2. ÖNCELİK: AJAN 1 - Tesis, Çalışma Saati, Yer & Ders Sorgulama (CSV)
+        # 🔴 2. ÖNCELİK: AJAN 2 - Tesis, Çalışma Saati, Yer & Ders Sorgulama (CSV)
         # "çöp" içeren sorular tesis ajanına takılmadan RAG'e gitsin diye istisna eklendi
         elif "çöp" not in p_lower and any(kw in p_lower for kw in ["çalışma saati", "saat kaç", "kaça kadar", "açık", "kapanıyor", "kapanış", "açılış", "kapalı", "havuz", "kütüphane", "tenis", "buz pateni", "bakımevi", "müze", "salon", "tesis", "spor", "nereler", "nerede", "yerler", "liste", "hangileri", "ders", "kurs", "eğitim"]):
             st.markdown('<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: tesis_bilgisi_sorgula]</b></div>', unsafe_allow_html=True)
