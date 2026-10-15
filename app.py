@@ -119,14 +119,14 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             hesaplanan = tesis_bilgisi_sorgula(prompt)
             cevap = f"Darıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
 
-        # 🔵 3. ÖNCELİK: RAG / METİN SORUSU (LLM GENERATION)
+       # 🔵 3. ÖNCELİK: RAG / METİN SORUSU (LLM GENERATION)
         else:
             messages = [
                 {
                     "role": "system",
                     "content": (
                         "Sen Darıca Belediyesi'nin resmi akıllı vatandaş asistanısın. "
-                        "Aşağıda verilen rehber dökümanındaki bilgilere dayanarak kullanıcının sorusuna kısa, net, doğru ve Türkçe cevap ver. "
+                        "Aşağıda verilen rehber dökümanındaki bilgilere dayanarak kullanıcının sorusuna kısa, net, düzgün Türkçe ile, büyük/küçük harf ve imla kurallarına dikkat ederek cevap ver. Kesinlikle hepsi büyük harfle yazma.\n"
                         "Rehberde bulunmayan konular için 'Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz.' de.\n\n"
                         f"[REHBER DÖKÜMANI]\n{rehber_metni}\n[BAĞLAM SONU]"
                     )
@@ -144,7 +144,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                 outputs = model.generate(
                     **inputs,
                     max_new_tokens=256,
-                    temperature=0.2,
+                    temperature=0.1,              # Bilgi sorularında rastgeleliği minimuma indirmek için
                     top_p=0.9,
                     repetition_penalty=1.2,
                     no_repeat_ngram_size=3,
