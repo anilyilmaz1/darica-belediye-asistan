@@ -127,7 +127,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                     "role": "system",
                     "content": (
                         "Sen Darıca Belediyesi'nin resmi akıllı vatandaş asistanısın. "
-                        "Aşağıda verilen rehber dökümanındaki bilgilere dayanarak kullanıcının sorusuna kısa, net, düzgün Türkçe ile cevap ver.\n"
+                        "Aşağıda verilen rehber dökümanındaki bilgileri doğrudan ve dil kurallarına uygun düzgün bir Türkçe ile aktar. Kendinden kelime veya ek uydurma.\n"
                         "Rehberde bulunmayan konular için 'Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz.' de.\n\n"
                         f"[REHBER DÖKÜMANI]\n{rehber_metni}\n[BAĞLAM SONU]"
                     )
