@@ -120,14 +120,14 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             hesaplanan = tesis_bilgisi_sorgula(prompt)
             cevap = f"Darıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
 
-        # 🔵 3. ÖNCELİK: RAG / METİN SORUSU (LLM GENERATION)
+       # 🔵 3. ÖNCELİK: RAG / METİN SORUSU (LLM GENERATION)
         else:
             messages = [
                 {
                     "role": "system",
                     "content": (
                         "Sen Darıca Belediyesi'nin resmi akıllı vatandaş asistanısın. "
-                        "Aşağıda verilen rehber dökümanındaki bilgileri doğrudan ve dil kurallarına uygun düzgün bir Türkçe ile aktar. Kendinden kelime veya ek uydurma.\n"
+                        "Aşağıda verilen rehber dökümanındaki bilgilere dayanarak kullanıcının sorusuna kısa, net, düzgün Türkçe ile cevap ver.\n"
                         "Rehberde bulunmayan konular için 'Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz.' de.\n\n"
                         f"[REHBER DÖKÜMANI]\n{rehber_metni}\n[BAĞLAM SONU]"
                     )
@@ -145,15 +145,14 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                 outputs = model.generate(
                     **inputs,
                     max_new_tokens=150,
-                    do_sample=False,               # Greedy Search: Bozuk kelime türetmeyi engeller
-                    repetition_penalty=1.2,
+                    do_sample=False,
+                    repetition_penalty=1.0,  # 🔴 1.2 YERİNE 1.0 YAPILDI (PDF'teki kelimeleri olduğu gibi rahatça kullanabilmesi için)
                     eos_token_id=tokenizer.eos_token_id,
                     pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
                 )
                 
             cevap = tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True).strip()
             
-            # --- OTOMATİK METİN TEMİZLEME (Post-Processing) ---
             if cevap.isupper():
                 cevap = cevap.capitalize()
                 
