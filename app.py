@@ -108,8 +108,8 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
         yas_match = re.search(r'(\d+)\s*(yaş|yaşında)', p_lower)
         yas = int(yas_match.group(1)) if yas_match else 0
         
-       # Tesis veritabanında aratılacak spesifik anahtar kelimeler
-        tesis_anahtarlari = ["havuz", "yüzme", "kütüphane", "tenis", "buz pateni", "fitness", "paten"]
+        # Tesis veritabanında aratılacak net anahtar kelimeler
+        tesis_anahtarlari = ["havuz", "yüzme", "kütüphane", "tenis", "buz pateni", "fitness", "paten", "bakımevi", "etüt"]
         is_tesis_sorgusu = any(k in p_lower for k in tesis_anahtarlari)
 
         # 1. Aşama: Tarife, İndirim ve Yaş Hesaplama Ajanı (Spesifik tesis soruları hariç)
@@ -129,18 +129,22 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             st.markdown(f'<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: darica_hizmet_hesapla]</b> (Hizmet: {hizmet_tipi})</div>', unsafe_allow_html=True)
             hesaplanan = darica_hizmet_hesapla(hizmet_tipi=hizmet_tipi, parametre=prompt, yas=yas)
             cevap = f"Darıca Belediyesi güncel tarifelerine göre:\n\n**{hesaplanan}**"
+            
+            st.markdown(cevap)
+            st.session_state.messages.append({"role": "assistant", "content": cevap})
 
         # 2. Aşama: Tesis Bilgisi ve Çalışma Saatleri Sorgulama Ajanı (CSV)
         elif "çöp" not in p_lower and (is_tesis_sorgusu or any(kw in p_lower for kw in [
-            "çalışma saati", "saat kaç", "kaça kadar", "açık", "kapanıyor", "kapanış", 
-            "açılış", "kapalı", "bakımevi", "müze", "salon", "tesis", "spor", "nereler", 
-            "nerede", "yerler", "liste", "hangileri", "ders", "kurs", "eğitim"
+            "çalışma saati", "saat kaç", "kaça kadar", "açılış saati", "kapanış saati", "hangi gün kapalı"
         ])):
             st.markdown('<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: tesis_bilgisi_sorgula]</b></div>', unsafe_allow_html=True)
             hesaplanan = tesis_bilgisi_sorgula(prompt)
             cevap = f"Darıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
+            
+            st.markdown(cevap)
+            st.session_state.messages.append({"role": "assistant", "content": cevap})
 
-        # 3. Aşama: RAG ve LLM Üretimi
+        # 3. Aşama: RAG ve LLM Üretimi (Konu dışı veya rehber soruları)
         else:
             rehber_ozet = rehber_metni[:3000] if len(rehber_metni) > 3000 else rehber_metni
             messages = [
@@ -184,11 +188,14 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             input_length = inputs["input_ids"].shape[1]
             cevap = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
             
-            # Yanıt doğrulama, JSON ve güvenlik filtreleri
+            # Gelişmiş güvenlik, JSON tespiti ve halüsinasyon filtreleri
             p_check = cevap.lower()
+            bad_words = [
+                "asistanısın", "darıcakent", "bilmediğin için", "uygulamasını kullan", 
+                "tesis_adi", "daricsi", "beledicisi", "vatan-asistan", "beled-i mahsusa"
+            ]
             
-            # JSON tespiti veya yasaklı kelimelerde doğrudan 153 mesajı verilir
-            if cevap.startswith("{") or "{" in cevap or any(bad in p_check for bad in ["asistanısın", "darıcakent", "bilmediğin için", "uygulamasını kullan", "tesis_adi", "daricsi"]):
+            if cevap.startswith("{") or "{" in cevap or "}" in cevap or any(bad in p_check for bad in bad_words):
                 cevap = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
                 
             if cevap.isupper():
