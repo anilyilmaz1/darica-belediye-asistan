@@ -113,7 +113,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-       p_lower = prompt.lower()
+        p_lower = prompt.lower()
         yas_match = re.search(r'(\d+)\s*(yaş|yaşında)', p_lower)
         yas = int(yas_match.group(1)) if yas_match else 0
         
