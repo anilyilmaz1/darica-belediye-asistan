@@ -165,3 +165,5 @@ def tesis_bilgisi_sorgula(sorgu: str, csv_path: str = "tesisler.csv") -> str:
 
     except Exception as e:
         return f"Tesis bilgileri sorgulanırken bir hata oluştu: {str(e)}"
+
+    #test
