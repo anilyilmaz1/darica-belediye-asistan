@@ -42,7 +42,7 @@ def darica_hizmet_hesapla(hizmet_tipi: str, parametre: str = "", yas: int = 0) -
 
     # Spor tesisleri, kültür merkezleri ve salon kiralamaları
     elif any(k in hizmet for k in ["spor", "tesis", "kültür"]) or "salon" in p_lower:
-        # Kültür merkezi / salon kiralama kontrolü (Spor salonu aramalarını hariç tutuyoruz)
+        # Kültür merkezi / salon kiralama kontrolü (Spor salonu aramaları hariç)
         is_kultur_veya_kiralama = (
             ("kültür" in hizmet or "kültür" in p_lower or "kiralama" in p_lower)
             or ("salon" in p_lower and "spor" not in p_lower and "spor" not in hizmet)
@@ -71,7 +71,7 @@ def darica_hizmet_hesapla(hizmet_tipi: str, parametre: str = "", yas: int = 0) -
         else:
             return "Konut yeni su aboneliği güvence bedeli 1.154 TL'dir. Kesilen suyun yeniden açma ücreti ise 420 TL'dir."
 
-    # Sıfır atık ve geri dönüşüm teşvikleri
+    # Sıfır atık ve geri dönüşüm 
     elif "atık" in hizmet or "yağ" in p_lower:
         return "5 litre bitkisel atık yağ getiren vatandaşlarımıza muhtarlıklardaki atık getirme merkezlerinde 1 litre deterjan hediye edilmektedir."
 
