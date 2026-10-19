@@ -165,11 +165,13 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=150,
-                    do_sample=False,
-                    repetition_penalty=1.0,
-                    eos_token_id=tokenizer.eos_token_id,
-                    pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+                    max_new_tokens=256,             
+                    repetition_penalty=1.2,         
+                    no_repeat_ngram_size=3,         
+                    do_sample=True,                 
+                    temperature=0.3,               
+                    top_p=0.9,
+                    pad_token_id=tokenizer.eos_token_id
                 )
             
             input_length = inputs["input_ids"].shape[1]
