@@ -161,7 +161,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             st.markdown(cevap)
             st.session_state.messages.append({"role": "assistant", "content": cevap})
 
-        # 3. Aşama: RAG ve LLM Üretimi (Esnek ve Detay Yakalayan RAG)
+        # 3. Aşama: RAG ve LLM Üretimi (Eş Anlamlı Toleranslı RAG)
         else:
             FALLBACK = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
 
@@ -170,8 +170,10 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                     "role": "system",
                     "content": (
                         "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın. "
-                        "Aşağıda verilen rehberdeki bilgileri kullanarak vatandaşın sorusuna net ve kurumsal bir Türkçe ile cevap ver.\n"
-                        "Önemli: Sorulan konuyla ilgili rehberde geçen saat, ücretsiz hizmet, başvuru şartı gibi detayları cevabında mutlaka belirt."
+                        "Aşağıda verilen rehberdeki bilgilere dayanarak vatandaşın sorusunu kısa, net ve kurumsal bir Türkçe ile yanıtla.\n\n"
+                        "ÖNEMLİ KURALLAR:\n"
+                        "1. Vatandaşın sorusundaki eş anlamlı kelimeleri (örneğin: depozito = güvence bedeli, sonlandırmak = kapatmak/iptal etmek, cret = fiyat) dikkate alarak rehberle eşleştir.\n"
+                        "2. Sadece Türkçe yaz. Rehberde kesinlikle yer almayan veya belediye dışındaki konular için varsayımda bulunma."
                     )
                 },
                 {
