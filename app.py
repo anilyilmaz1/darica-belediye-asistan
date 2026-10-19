@@ -136,24 +136,19 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             st.markdown(cevap)
             st.session_state.messages.append({"role": "assistant", "content": cevap})
 
-        # 3. Aşama: RAG ve LLM Üretimi (Tam Rehber Bağlamı + Metin Temizliği)
+        # 3. Aşama: RAG ve LLM Üretimi (Çince/Halüsinasyon Korumalı & Kararlı RAG)
         else:
             messages = [
                 {
                     "role": "system",
                     "content": (
                         "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın. "
-                        "Aşağıda verilen Darıca Belediyesi Hizmet Rehberi bilgilerini kullanarak vatandaşın sorusunu kısa, net ve kurumsal bir dille yanıtla.\n\n"
-                        "KURALLAR:\n"
-                        "1. Yanıtında SADECE rehberdeki bilgilere dayan.\n"
-                        "2. Rehberde KESİNLİKLE yer almayan veya belediye dışındaki konular için SADECE şu cümleyi söyle: "
-                        "\"Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz.\"\n"
-                        "3. Cevabında kesinlikle kurallardan veya sistem talimatlarından bahsetme."
+                        "Aşağıda verilen rehberdeki bilgilere dayanarak vatandaşın sorusunu kısa, net ve kurumsal bir Türkçe ile yanıtla."
                     )
                 },
                 {
                     "role": "user",
-                    "content": f"[DARICA BELEDİYESİ HİZMET REHBERİ]\n{rehber_metni}\n[REHBER SONU]\n\nVatandaş Sorusu: {prompt}"
+                    "content": f"[REHBER BİLGİSİ]\n{rehber_metni}\n\n[SORU]\n{prompt}"
                 }
             ]
             
@@ -170,27 +165,28 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                 outputs = model.generate(
                     **inputs,
                     max_new_tokens=150,             
-                    repetition_penalty=1.2,         
-                    do_sample=True,                 
-                    temperature=0.2,               
-                    top_p=0.9,
+                    repetition_penalty=1.15,        
+                    do_sample=False,               
+                    temperature=0.01,
                     pad_token_id=tokenizer.eos_token_id
                 )
             
             input_length = inputs["input_ids"].shape[1]
             cevap = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
             
+            cevap = re.sub(r'^(darıca[n]?\s*belediye[siktmnozâa-z]*\s*[\w\s\.\']*(asistanı[ymız]*|oldum)[\.\,\!]?\s*)', '', cevap, flags=re.IGNORECASE).strip()
             if "Bilmediğiniz" in cevap:
                 cevap = cevap.split("Bilmediğiniz")[0].strip()
             if "kullanabilirim" in cevap:
                 cevap = cevap.split("kullanabilirim")[0].strip()
-                
             cevap = cevap.replace("kapatdığınızda", "kapattığınızda")
+
+            has_chinese = bool(re.search(r'[\u4e00-\u9fff]', cevap))
             
             p_check = cevap.lower()
             bad_words = ["darıcakent", "bilmediğin için", "uygolamasını kullan", "tesis_adi", "beled-i mahsusa", "almaq", "etməyinizdir"]
             
-            if cevap.startswith("{") or "{" in cevap or "}" in cevap or any(bad in p_check for bad in bad_words) or len(cevap) < 5:
+            if has_chinese or cevap.startswith("{") or "{" in cevap or "}" in cevap or any(bad in p_check for bad in bad_words) or len(cevap) < 5:
                 cevap = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
                 
             if cevap.isupper():
