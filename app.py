@@ -161,7 +161,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             st.markdown(cevap)
             st.session_state.messages.append({"role": "assistant", "content": cevap})
 
-        # 3. Aşama: RAG ve LLM Üretimi (Eş Anlamlı Toleranslı RAG)
+        # 3. Aşama: RAG ve LLM Üretimi (Sade Prompt + LoRA Artifact Temizleyici)
         else:
             FALLBACK = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
 
@@ -170,10 +170,8 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                     "role": "system",
                     "content": (
                         "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın. "
-                        "Aşağıda verilen rehberdeki bilgilere dayanarak vatandaşın sorusunu kısa, net ve kurumsal bir Türkçe ile yanıtla.\n\n"
-                        "ÖNEMLİ KURALLAR:\n"
-                        "1. Vatandaşın sorusundaki eş anlamlı kelimeleri (örneğin: depozito = güvence bedeli, sonlandırmak = kapatmak/iptal etmek, cret = fiyat) dikkate alarak rehberle eşleştir.\n"
-                        "2. Sadece Türkçe yaz. Rehberde kesinlikle yer almayan veya belediye dışındaki konular için varsayımda bulunma."
+                        "Sadece aşağıda verilen rehberdeki bilgilere dayanarak vatandaşın sorusuna "
+                        "doğrudan, kısa, net ve mantıklı bir Türkçe ile cevap ver."
                     )
                 },
                 {
@@ -196,41 +194,50 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=150,
+                    max_new_tokens=120,
                     do_sample=False,
-                    repetition_penalty=1.03,
-                    suppress_tokens=get_cjk_token_ids(tokenizer),
+                    repetition_penalty=1.05,                        # Cümle yapısını korumak için ideal
+                    suppress_tokens=get_cjk_token_ids(tokenizer),  # Çince engeli
                     pad_token_id=tokenizer.eos_token_id
                 )
 
             input_length = inputs["input_ids"].shape[1]
             cevap = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
 
-            # Metin Temizleme
+            # --- METİN TEMİZLEME VE ARTİFACT (EZBER) AYIKLAMA ---
+            # 1. Çince karakterleri ve süslü parantezleri sil
             cevap = re.sub(r'[\u3400-\u4dbf\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]+', '', cevap)
             cevap = re.sub(r'[{}]', '', cevap)
 
+            # 2. LoRA fine-tune veri setinden sızan saçma kalıpları düzelt/sil
+            cevap = re.sub(r'\bmutlu\s+hikay[eö]\s*[\w]*\b', '', cevap, flags=re.IGNORECASE)
+            cevap = cevap.replace("ödemek zorunda kalmadığınıza göre", "borcunuz bulunmuyorsa")
+            cevap = cevap.replace("kapatdığınızda", "kapattığınızda")
+
+            # 3. Girişteki ezber asistan kalıplarını temizle
             cevap = re.sub(
                 r'^(darıca[n]?\s*belediye[siktmnozâa-z]*\s*[\w\s\.\']*(asistanı[ymız]*|oldum)[\.\,\!]?\s*)',
                 '', cevap, flags=re.IGNORECASE
             ).strip()
 
+            # 4. Gereksiz kuyruk cümlelerini kes
             for kesici in ("Bilmediğiniz", "kullanabilirim"):
                 if kesici in cevap:
                     cevap = cevap.split(kesici)[0].strip()
 
-            cevap = cevap.replace("kapatdığınızda", "kapattığınızda")
+            # Bozuk boşlukları düzenle
             cevap = re.sub(r'\s{2,}', ' ', cevap).strip()
 
+            # 5. Cümle yarım kaldıysa son noktaya kadar kes
             if cevap and cevap[-1] not in ".!?":
                 son = max(cevap.rfind("."), cevap.rfind("!"), cevap.rfind("?"))
                 if son > 20:
                     cevap = cevap[:son + 1]
 
-            # Kalite ve Halüsinasyon Kontrolü
+            # 6. Kalite ve Halüsinasyon Kontrolü
             bad_words = [
                 "tesis_adi", "almaq", "etməyinizdir", "beled-i mahsusa", 
-                "teyzelemektedir", "uydurma", "mutlu hikayeler"
+                "teyzelemektedir", "uydurma"
             ]
             p_check = cevap.lower()
             if len(cevap) < 10 or any(bad in p_check for bad in bad_words):
