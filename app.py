@@ -117,16 +117,20 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
         yas_match = re.search(r'(\d+)\s*(yaş|yaşında)', p_lower)
         yas = int(yas_match.group(1)) if yas_match else 0
         
-        # Tesis anahtar kelimelerine hayvan/sahiplendirme terimleri eklendi
+        # Tesis anahtar kelimeleri SADECE gerçek fiziki tesis isimlerinden oluşmalıdır
         tesis_anahtarlari = [
-            "havuz", "yüzme", "kütüphane", "tenis", "buz pateni", "fitness", 
-            "paten", "bakımevi", "etüt", "köpek", "kedi", "hayvan", "sahiplen"
+            "havuz", "yüzme", "kütüphane", "tenis", "buz pateni", 
+            "fitness", "paten", "bakımevi", "barınak", "etüt"
         ]
         is_tesis_sorgusu = any(k in p_lower for k in tesis_anahtarlari)
 
-        # 1. Aşama: Tarife, İndirim ve Yaş Hesaplama Ajanı
-        # "paralı", "ücretli" kelimeleri eklendi
-        if not is_tesis_sorgusu and (any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl", "paralı", "ücretli", "indirim", "hesapla", "atık", "yağ", "deterjan"]) or yas > 0):
+        # 1. Aşama: Tarife, İndirim ve Hesaplama Ajanı (Belirli hizmet tipleri veya yaş hesaplaması)
+        is_hesaplama_sorgusu = any(kw in p_lower for kw in ["hesapla", "indirim", "atık yağ", "deterjan"]) or (
+            any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl"]) and 
+            any(h in p_lower for h in ["nikah", "otopark", "karavan", "spor", "su"])
+        )
+
+        if not is_tesis_sorgusu and (is_hesaplama_sorgusu or yas > 0):
             hizmet_tipi = "genel"
             if "nikah" in p_lower:
                 hizmet_tipi = "nikah"
@@ -146,7 +150,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             st.markdown(cevap)
             st.session_state.messages.append({"role": "assistant", "content": cevap})
 
-        # 2. Aşama: Tesis Bilgisi ve Çalışma Saatleri Sorgulama Ajanı (CSV)
+        # 2. Aşama: Tesis Bilgisi ve Çalışma Saatleri Sorgulama Ajanı (CSV Sorgusu)
         elif "çöp" not in p_lower and (is_tesis_sorgusu or any(kw in p_lower for kw in [
             "çalışma saati", "saat kaç", "kaça kadar", "açılış saati", "kapanış saati", "hangi gün kapalı"
         ])):
@@ -157,7 +161,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             st.markdown(cevap)
             st.session_state.messages.append({"role": "assistant", "content": cevap})
 
-        # 3. Aşama: RAG ve LLM Üretimi (Gelişmiş Halüsinasyon Süzgeçli)
+        # 3. Aşama: RAG ve LLM Üretimi (Rehber PDF Sorgusu)
         else:
             FALLBACK = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
 
@@ -222,10 +226,10 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                 if son > 20:
                     cevap = cevap[:son + 1]
 
-            # Genişletilmiş Halüsinasyon ve Kalite Kontrolü
+            # Kalite ve Halüsinasyon Kontrolü
             bad_words = [
                 "tesis_adi", "almaq", "etməyinizdir", "beled-i mahsusa", 
-                "teyzelemektedir", "uydurma", "mutlu hikayeler", "kimsenin yardımını"
+                "teyzelemektedir", "uydurma", "mutlu hikayeler"
             ]
             p_check = cevap.lower()
             if len(cevap) < 10 or any(bad in p_check for bad in bad_words):
