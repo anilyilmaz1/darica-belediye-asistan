@@ -108,8 +108,12 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
         yas_match = re.search(r'(\d+)\s*(yaş|yaşında)', p_lower)
         yas = int(yas_match.group(1)) if yas_match else 0
         
-       # 1. Aşama: Tarife, İndirim ve Yaş Hesaplama Ajanı
-        if any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl", "indirim", "hesapla", "atık", "yağ", "deterjan"]) or yas > 0:
+       # Tesis veritabanında aratılacak spesifik anahtar kelimeler
+        tesis_anahtarlari = ["havuz", "yüzme", "kütüphane", "tenis", "buz pateni", "fitness", "paten"]
+        is_tesis_sorgusu = any(k in p_lower for k in tesis_anahtarlari)
+
+        # 1. Aşama: Tarife, İndirim ve Yaş Hesaplama Ajanı (Spesifik tesis soruları hariç)
+        if not is_tesis_sorgusu and (any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl", "indirim", "hesapla", "atık", "yağ", "deterjan"]) or yas > 0):
             hizmet_tipi = "genel"
             if "nikah" in p_lower:
                 hizmet_tipi = "nikah"
@@ -126,13 +130,12 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             hesaplanan = darica_hizmet_hesapla(hizmet_tipi=hizmet_tipi, parametre=prompt, yas=yas)
             cevap = f"Darıca Belediyesi güncel tarifelerine göre:\n\n**{hesaplanan}**"
 
-        # 2. Aşama: Tesis Bilgisi ve Çalışma Saatleri Sorgulama Ajanı
-        elif "çöp" not in p_lower and any(kw in p_lower for kw in [
+        # 2. Aşama: Tesis Bilgisi ve Çalışma Saatleri Sorgulama Ajanı (CSV)
+        elif "çöp" not in p_lower and (is_tesis_sorgusu or any(kw in p_lower for kw in [
             "çalışma saati", "saat kaç", "kaça kadar", "açık", "kapanıyor", "kapanış", 
-            "açılış", "kapalı", "havuz", "kütüphane", "tenis", "buz pateni", "bakımevi", 
-            "müze", "salon", "tesis", "spor", "nereler", "nerede", "yerler", "liste", 
-            "hangileri", "ders", "kurs", "eğitim"
-        ]):
+            "açılış", "kapalı", "bakımevi", "müze", "salon", "tesis", "spor", "nereler", 
+            "nerede", "yerler", "liste", "hangileri", "ders", "kurs", "eğitim"
+        ])):
             st.markdown('<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: tesis_bilgisi_sorgula]</b></div>', unsafe_allow_html=True)
             hesaplanan = tesis_bilgisi_sorgula(prompt)
             cevap = f"Darıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
