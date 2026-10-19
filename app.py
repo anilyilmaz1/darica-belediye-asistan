@@ -1,19 +1,20 @@
-import streamlit as st
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from peft import PeftModel
-import pypdf
 import os
 import re
+import pypdf
+import torch
+import streamlit as st
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import PeftModel
 from araclar import darica_hizmet_hesapla, tesis_bilgisi_sorgula
 
+# Sayfa yapılandırması
 st.set_page_config(
     page_title="Darıca Belediyesi Akıllı Vatandaş Asistanı",
     page_icon="🏛️",
     layout="wide"
 )
 
-# Arayüz Tasarımı (CSS)
+# Özel Arayüz Stilleri (CSS)
 st.markdown("""
     <style>
     .main-title { font-size: 2.2rem; color: #1E3A8A; font-weight: 700; }
@@ -29,7 +30,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Sol Panel (Sidebar)
+# Yan Panel (Sidebar)
 with st.sidebar:
     st.title("🏛️ Darıca-Asistan")
     st.markdown("**Geliştirici:** Anıl Yılmaz")
@@ -53,7 +54,7 @@ with st.sidebar:
 
 st.markdown('<p class="main-title">🏛️ Darıca Belediyesi Akıllı Vatandaş Asistanı</p>', unsafe_allow_html=True)
 
-# RAG & Model Yükleyici
+# Model ve Doküman Yükleme
 @st.cache_resource
 def kaynaklari_yukle():
     pdf_text = ""
@@ -69,27 +70,34 @@ def kaynaklari_yukle():
     base_id = "Qwen/Qwen2.5-3B-Instruct"
     
     tokenizer = AutoTokenizer.from_pretrained(repo_id)
+    
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+    
     base_model = AutoModelForCausalLM.from_pretrained(
         base_id,
-        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-        device_map="auto" if torch.cuda.is_available() else "cpu"
+        torch_dtype=dtype,
+        device_map="auto" if torch.cuda.is_available() else None
     )
     model = PeftModel.from_pretrained(base_model, repo_id)
     
     return tokenizer, model, pdf_text
 
-with st.spinner("Model ve Darıca Hizmet Rehberi yükleniyor..."):
+with st.spinner("Model ve hizmet rehberi yükleniyor..."):
     tokenizer, model, rehber_metni = kaynaklari_yukle()
 
+# Sohbet geçmişi ilklendirme
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "Merhaba Sayın Vatandaşımız! Darıca Belediyesi hizmetleri, tesislerimiz, çalışma saatleri veya başvuru ücretleri hakkında size nasıl yardımcı olabilirim?"}
     ]
 
+# Geçmiş mesajları ekrana basma
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
+# Kullanıcı girdisi işleme
 if prompt := st.chat_input("Sorunuzu yazınız..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -100,27 +108,36 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
         yas_match = re.search(r'(\d+)\s*(yaş|yaşında)', p_lower)
         yas = int(yas_match.group(1)) if yas_match else 0
         
-        # 🔴 1. ÖNCELİK: AJAN 1 - Tarife, İndirim, Yaş & Atık Yağ Hesaplama
+        # 1. Aşama: Tarife, İndirim ve Yaş Hesaplama Ajanı
         if any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl", "indirim", "hesapla", "atık", "yağ", "deterjan"]) or yas > 0:
             hizmet_tipi = "genel"
-            if "nikah" in p_lower: hizmet_tipi = "nikah"
-            elif "otopark" in p_lower or "karavan" in p_lower: hizmet_tipi = "otopark"
-            elif "spor" in p_lower or "tesis" in p_lower or "kültür" in p_lower or "salon" in p_lower: hizmet_tipi = "spor"
-            elif "su" in p_lower: hizmet_tipi = "su"
-            elif "atık" in p_lower or "yağ" in p_lower: hizmet_tipi = "atık"
+            if "nikah" in p_lower:
+                hizmet_tipi = "nikah"
+            elif "otopark" in p_lower or "karavan" in p_lower:
+                hizmet_tipi = "otopark"
+            elif any(k in p_lower for k in ["spor", "tesis", "kültür", "salon"]):
+                hizmet_tipi = "spor"
+            elif "su" in p_lower:
+                hizmet_tipi = "su"
+            elif "atık" in p_lower or "yağ" in p_lower:
+                hizmet_tipi = "atık"
             
             st.markdown(f'<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: darica_hizmet_hesapla]</b> (Hizmet: {hizmet_tipi})</div>', unsafe_allow_html=True)
             hesaplanan = darica_hizmet_hesapla(hizmet_tipi=hizmet_tipi, parametre=prompt, yas=yas)
             cevap = f"Darıca Belediyesi güncel tarifelerine göre:\n\n**{hesaplanan}**"
 
-        # 🔴 2. ÖNCELİK: AJAN 2 - Tesis, Çalışma Saati, Yer & Ders Sorgulama (CSV)
-        # "çöp" içeren sorular tesis ajanına takılmadan RAG'e gitsin diye istisna eklendi
-        elif "çöp" not in p_lower and any(kw in p_lower for kw in ["çalışma saati", "saat kaç", "kaça kadar", "açık", "kapanıyor", "kapanış", "açılış", "kapalı", "havuz", "kütüphane", "tenis", "buz pateni", "bakımevi", "müze", "salon", "tesis", "spor", "nereler", "nerede", "yerler", "liste", "hangileri", "ders", "kurs", "eğitim"]):
+        # 2. Aşama: Tesis Bilgisi ve Çalışma Saatleri Sorgulama Ajanı
+        elif "çöp" not in p_lower and any(kw in p_lower for kw in [
+            "çalışma saati", "saat kaç", "kaça kadar", "açık", "kapanıyor", "kapanış", 
+            "açılış", "kapalı", "havuz", "kütüphane", "tenis", "buz pateni", "bakımevi", 
+            "müze", "salon", "tesis", "spor", "nereler", "nerede", "yerler", "liste", 
+            "hangileri", "ders", "kurs", "eğitim"
+        ]):
             st.markdown('<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: tesis_bilgisi_sorgula]</b></div>', unsafe_allow_html=True)
             hesaplanan = tesis_bilgisi_sorgula(prompt)
             cevap = f"Darıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
 
-       # 🔵 3. ÖNCELİK: RAG / METİN SORUSU (LLM GENERATION)
+        # 3. Aşama: RAG ve LLM Üretimi
         else:
             messages = [
                 {
@@ -137,11 +154,8 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             ]
             
             prompt_str = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            inputs = tokenizer(prompt_str, return_tensors="pt")
+            inputs = tokenizer(prompt_str, return_tensors="pt").to(model.device)
             
-            if torch.cuda.is_available():
-                inputs = inputs.to("cuda")
-                
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
@@ -151,11 +165,11 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                     eos_token_id=tokenizer.eos_token_id,
                     pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
                 )
-                
-            cevap = tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True).strip()
             
-            # --- GÜVENLİK VE METİN TEMİZLEME (Guardrails) ---
-            # Model prompt sızdırırsa veya halüsinatif kelimeler üretirse varsayılan mesaja zorlar
+            input_length = inputs["input_ids"].shape[1]
+            cevap = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
+            
+            # Yanıt doğrulama ve güvenlik filtreleri
             p_check = cevap.lower()
             if any(bad in p_check for bad in ["asistanısın", "darıcakent", "bilmediğin için", "uygulamasını kullan"]):
                 cevap = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
@@ -166,6 +180,5 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             if not cevap:
                 cevap = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
 
-                
         st.markdown(cevap)
         st.session_state.messages.append({"role": "assistant", "content": cevap})
