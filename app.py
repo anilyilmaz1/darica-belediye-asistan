@@ -136,11 +136,11 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             st.markdown(cevap)
             st.session_state.messages.append({"role": "assistant", "content": cevap})
 
-        # 3. Aşama: RAG ve LLM Üretimi (Madde Bazlı RAG & Otomatik Metin Temizleme)
+        # 3. Aşama: RAG ve LLM Üretimi (Sıfır Saçmalama / Greedy Decoding)
         else:
             maddeler = re.split(r'\n(?=\d+\.\s)', rehber_metni.strip())
             if not maddeler or len(maddeler) <= 1:
-                maddeler = [p.strip() for p in rehber_metni.split("\n\n") if len(p.strip()) > 30]
+                maddeler = [p.strip() for p in rehber_metni.split("\n\n") if len(p.strip()) > 20]
 
             temiz_soru = re.sub(r'[^\w\s]', '', p_lower)
             stop_words = ["için", "nedir", "nelerdir", "nasıl", "veya", "yapılır", "paketinden", "yararlanmak", "edilir", "mi", "mu", "mı"]
@@ -156,22 +156,18 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
 
             eslesmeler.sort(key=lambda x: x[0], reverse=True)
             if eslesmeler:
-                rehber_ozet = "\n\n".join([item[1] for item in eslesmeler[:3]])
+                rehber_ozet = "\n\n".join([item[1] for item in eslesmeler[:2]])
             else:
-                rehber_ozet = rehber_metni[:2500]
+                rehber_ozet = rehber_metni[:2000]
 
             messages = [
                 {
                     "role": "system",
-                    "content": "Sen Darıca Belediyesi AI asistanısın. Sadece verilen rehberdeki bilgilere dayanarak doğrudan cevap ver."
+                    "content": "Sen Darıca Belediyesi AI asistanısın. Aşağıdaki resmi rehber bilgisini kullanarak soruyu kısa ve net yanıtla."
                 },
                 {
                     "role": "user",
-                    "content": (
-                        f"[REHBER BİLGİSİ]\n{rehber_ozet}\n[REHBER SONU]\n\n"
-                        f"Vatandaş Sorusu: {prompt}\n\n"
-                        "ÖNEMLİ: Cevaba KESİNLİKLE 'Darıca Belediyesi'nin resmi asistanıyım' gibi giriş cümleleri ekleme. Doğrudan soruya cevap ver. Rehberde bilgi yoksa SADECE 'Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz.' yaz."
-                    )
+                    "content": f"Rehber Bilgisi:\n{rehber_ozet}\n\nSoru: {prompt}\n\nYanıt:"
                 }
             ]
             
@@ -187,12 +183,10 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=200,             
+                    max_new_tokens=150,             
                     repetition_penalty=1.2,         
-                    no_repeat_ngram_size=3,         
-                    do_sample=True,                 
-                    temperature=0.2,               
-                    top_p=0.9,
+                    do_sample=False,               
+                    temperature=0.01,
                     pad_token_id=tokenizer.eos_token_id
                 )
             
@@ -202,7 +196,10 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             cevap = re.sub(r'^(darıca[n]?\s*belediye[siktmnozâa-z]*\s*[\w\s\.\']*(asistanı[ymız]*|oldum)[\.\,\!]?\s*)', '', cevap, flags=re.IGNORECASE).strip()
             
             p_check = cevap.lower()
-            bad_words = ["darıcakent", "bilmediğin için", "uygolamasını kullan", "tesis_adi", "beled-i mahsusa"]
+            bad_words = [
+                "darıcakent", "bilmediğin için", "uygolamasını kullan", "tesis_adi", 
+                "beled-i mahsusa", "almaq", "etməyinizdir", "detaali", "uydurma", "1-5-3", "dial"
+            ]
             
             if cevap.startswith("{") or "{" in cevap or "}" in cevap or any(bad in p_check for bad in bad_words) or len(cevap) < 5:
                 cevap = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
