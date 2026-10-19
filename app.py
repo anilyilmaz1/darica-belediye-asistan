@@ -136,13 +136,11 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             st.markdown(cevap)
             st.session_state.messages.append({"role": "assistant", "content": cevap})
 
-        # 3. Aşama: RAG ve LLM Üretimi (Gelişmiş Chunking & Kök Tabanlı RAG)
+        # 3. Aşama: RAG ve LLM Üretimi (Madde Bazlı Akıllı RAG)
         else:
-            chunk_size = 800
-            overlap = 200
-            chunks = []
-            for i in range(0, len(rehber_metni), max(1, chunk_size - overlap)):
-                chunks.append(rehber_metni[i:i + chunk_size])
+            maddeler = re.split(r'\n(?=\d+\.\s)', rehber_metni.strip())
+            if not maddeler or len(maddeler) <= 1:
+                maddeler = [p.strip() for p in rehber_metni.split("\n\n") if len(p.strip()) > 30]
 
             temiz_soru = re.sub(r'[^\w\s]', '', p_lower)
             stop_words = ["için", "nedir", "nelerdir", "nasıl", "veya", "yapılır", "paketinden", "yararlanmak"]
@@ -150,33 +148,34 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             soru_kokleri = [w[:4] for w in soru_kelimeleri]
 
             eslesmeler = []
-            for chunk in chunks:
-                chunk_l = chunk.lower()
-                puan = sum(1 for kok in soru_kokleri if kok in chunk_l)
+            for madde in maddeler:
+                madde_l = madde.lower()
+                puan = sum(2 if kok in madde_l else 0 for kok in soru_kokleri)
                 if puan > 0:
-                    eslesmeler.append((puan, chunk))
+                    eslesmeler.append((puan, madde))
 
             eslesmeler.sort(key=lambda x: x[0], reverse=True)
             if eslesmeler:
-                rehber_ozet = "\n---\n".join([item[1] for item in eslesmeler[:3]])
+                rehber_ozet = "\n\n".join([item[1] for item in eslesmeler[:3]])
             else:
                 rehber_ozet = rehber_metni[:2500]
 
             messages = [
-                {  
+                {
                     "role": "system",
-                    "content": (
-                        "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın. "
-                        "Aşağıda verilen rehber bilgilerini kullanarak soruyu kısa, net ve kurumsal bir dille yanıtla.\n\n"
-                        "KURALLAR:\n"
-                        "1. SADECE DÜZ METİN OLARAK CEVAP VER. Kesinlikle JSON formatı, `{}` parantez veya anahtar-değer çifti KULLANMA.\n"
-                        "2. Yanıtına kesinlikle 'Darıca Belediyesi'nin resmi vatandaş asistanı oldum' gibi yapay ifadeler ekleme.\n"
-                        "3. Yalnızca rehberde KESİNLİKLE bulunmayan veya belediye dışındaki sorular için SADECE şu cümleyi söyle: "
-                        "\"Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz.\"\n\n"
-                        f"[REHBER BİLGİLERİ]\n{rehber_ozet}\n[BAĞLAM SONU]"
-                    )
+                    "content": "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın. Sadece verilen rehber bilgilerine dayanarak kısa, net ve kurumsal bir dille cevap ver."
                 },
-                {"role": "user", "content": prompt}
+                {
+                    "role": "user",
+                    "content": (
+                        f"[REHBER BİLGİLERİ]\n{rehber_ozet}\n[REHBER SONU]\n\n"
+                        f"Vatandaş Sorusu: {prompt}\n\n"
+                        "KURALLAR:\n"
+                        "1. Yanıtında SADECE yukarıdaki rehber bilgilerini kullan.\n"
+                        "2. Rehberde bulunmayan sorular için SADECE 'Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz.' de.\n"
+                        "3. Kesinlikle website adresi, link veya yapay giriş cümleleri ekleme."
+                    )
+                }
             ]
             
             prompt_str = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
@@ -191,11 +190,11 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=256,             
+                    max_new_tokens=200,             
                     repetition_penalty=1.2,         
                     no_repeat_ngram_size=3,         
                     do_sample=True,                 
-                    temperature=0.2,               
+                    temperature=0.1,               
                     top_p=0.9,
                     pad_token_id=tokenizer.eos_token_id
                 )
@@ -206,7 +205,8 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             p_check = cevap.lower()
             bad_words = [
                 "darıcakent", "bilmediğin için", "uygolamasını kullan", "uygulamasını kullan",
-                "tesis_adi", "daricsi", "beledicisi", "beled-i mahsusa", "borsa", "borsaya", "yardım ister misiniz"
+                "tesis_adi", "daricsi", "beledicisi", "beled-i mahsusa", "borsa", "vatanav",
+                "darican", "daricabeledim", "formulardan", "diyor.", "website", "http", "www"
             ]
             
             if cevap.startswith("{") or "{" in cevap or "}" in cevap or any(bad in p_check for bad in bad_words):
