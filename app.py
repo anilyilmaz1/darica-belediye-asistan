@@ -136,7 +136,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             st.markdown(cevap)
             st.session_state.messages.append({"role": "assistant", "content": cevap})
 
-        # 3. Aşama: RAG ve LLM Üretimi (Sıfır Saçmalama / Greedy Decoding)
+        # 3. Aşama: RAG ve LLM Üretimi (Tam Rehber Bağlamı + Metin Temizliği)
         else:
             messages = [
                 {
@@ -147,7 +147,8 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                         "KURALLAR:\n"
                         "1. Yanıtında SADECE rehberdeki bilgilere dayan.\n"
                         "2. Rehberde KESİNLİKLE yer almayan veya belediye dışındaki konular için SADECE şu cümleyi söyle: "
-                        "\"Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz.\""
+                        "\"Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz.\"\n"
+                        "3. Cevabında kesinlikle kurallardan veya sistem talimatlarından bahsetme."
                     )
                 },
                 {
@@ -168,8 +169,8 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=200,             
-                    repetition_penalty=1.1,         
+                    max_new_tokens=150,             
+                    repetition_penalty=1.2,         
                     do_sample=True,                 
                     temperature=0.2,               
                     top_p=0.9,
@@ -178,6 +179,13 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             
             input_length = inputs["input_ids"].shape[1]
             cevap = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
+            
+            if "Bilmediğiniz" in cevap:
+                cevap = cevap.split("Bilmediğiniz")[0].strip()
+            if "kullanabilirim" in cevap:
+                cevap = cevap.split("kullanabilirim")[0].strip()
+                
+            cevap = cevap.replace("kapatdığınızda", "kapattığınızda")
             
             p_check = cevap.lower()
             bad_words = ["darıcakent", "bilmediğin için", "uygolamasını kullan", "tesis_adi", "beled-i mahsusa", "almaq", "etməyinizdir"]
