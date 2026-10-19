@@ -150,8 +150,9 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                         "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın. "
                         "Aşağıda verilen rehber bilgilerini kullanarak soruyu kısa, net ve kurumsal bir dille yanıtla.\n\n"
                         "KURALLAR:\n"
-                        "1. Yanıtına kesinlikle 'Darıca Belediyesi'nin resmi vatandaş asistanı oldum' gibi yapay ifadeler ekleme.\n"
-                        "2. Yalnızca rehberde KESİNLİKLE bulunmayan veya belediye dışındaki sorular için SADECE şu cümleyi söyle: "
+                        "1. SADECE DÜZ METİN OLARAK CEVAP VER. Kesinlikle JSON formatı, `{}` parantez veya anahtar-değer çifti KULLANMA.\n"
+                        "2. Yanıtına kesinlikle 'Darıca Belediyesi'nin resmi vatandaş asistanı oldum' gibi yapay ifadeler ekleme.\n"
+                        "3. Yalnızca rehberde KESİNLİKLE bulunmayan veya belediye dışındaki sorular için SADECE şu cümleyi söyle: "
                         "\"Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz.\"\n\n"
                         f"[REHBER BİLGİLERİ]\n{rehber_ozet}\n[BAĞLAM SONU]"
                     )
@@ -175,7 +176,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                     repetition_penalty=1.2,         
                     no_repeat_ngram_size=3,         
                     do_sample=True,                 
-                    temperature=0.3,               
+                    temperature=0.2,               
                     top_p=0.9,
                     pad_token_id=tokenizer.eos_token_id
                 )
@@ -183,9 +184,11 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             input_length = inputs["input_ids"].shape[1]
             cevap = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
             
-            # Yanıt doğrulama ve güvenlik filtreleri
+            # Yanıt doğrulama, JSON ve güvenlik filtreleri
             p_check = cevap.lower()
-            if any(bad in p_check for bad in ["asistanısın", "darıcakent", "bilmediğin için", "uygulamasını kullan"]):
+            
+            # JSON tespiti veya yasaklı kelimelerde doğrudan 153 mesajı verilir
+            if cevap.startswith("{") or "{" in cevap or any(bad in p_check for bad in ["asistanısın", "darıcakent", "bilmediğin için", "uygulamasını kullan", "tesis_adi", "daricsi"]):
                 cevap = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
                 
             if cevap.isupper():
