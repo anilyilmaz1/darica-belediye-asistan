@@ -138,36 +138,21 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
 
         # 3. Aşama: RAG ve LLM Üretimi (Sıfır Saçmalama / Greedy Decoding)
         else:
-            maddeler = re.split(r'\n(?=\d+\.\s)', rehber_metni.strip())
-            if not maddeler or len(maddeler) <= 1:
-                maddeler = [p.strip() for p in rehber_metni.split("\n\n") if len(p.strip()) > 20]
-
-            temiz_soru = re.sub(r'[^\w\s]', '', p_lower)
-            stop_words = ["için", "nedir", "nelerdir", "nasıl", "veya", "yapılır", "paketinden", "yararlanmak", "edilir", "mi", "mu", "mı"]
-            soru_kelimeleri = [w for w in temiz_soru.split() if len(w) >= 2 and w not in stop_words]
-            soru_kokleri = [w[:4] for w in soru_kelimeleri]
-
-            eslesmeler = []
-            for madde in maddeler:
-                madde_l = madde.lower()
-                puan = sum(2 if kok in madde_l else 0 for kok in soru_kokleri)
-                if puan > 0:
-                    eslesmeler.append((puan, madde))
-
-            eslesmeler.sort(key=lambda x: x[0], reverse=True)
-            if eslesmeler:
-                rehber_ozet = "\n\n".join([item[1] for item in eslesmeler[:2]])
-            else:
-                rehber_ozet = rehber_metni[:2000]
-
             messages = [
                 {
                     "role": "system",
-                    "content": "Sen Darıca Belediyesi AI asistanısın. Aşağıdaki resmi rehber bilgisini kullanarak soruyu kısa ve net yanıtla."
+                    "content": (
+                        "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın. "
+                        "Aşağıda verilen Darıca Belediyesi Hizmet Rehberi bilgilerini kullanarak vatandaşın sorusunu kısa, net ve kurumsal bir dille yanıtla.\n\n"
+                        "KURALLAR:\n"
+                        "1. Yanıtında SADECE rehberdeki bilgilere dayan.\n"
+                        "2. Rehberde KESİNLİKLE yer almayan veya belediye dışındaki konular için SADECE şu cümleyi söyle: "
+                        "\"Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz.\""
+                    )
                 },
                 {
                     "role": "user",
-                    "content": f"Rehber Bilgisi:\n{rehber_ozet}\n\nSoru: {prompt}\n\nYanıt:"
+                    "content": f"[DARICA BELEDİYESİ HİZMET REHBERİ]\n{rehber_metni}\n[REHBER SONU]\n\nVatandaş Sorusu: {prompt}"
                 }
             ]
             
@@ -183,23 +168,19 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=150,             
-                    repetition_penalty=1.2,         
-                    do_sample=False,               
-                    temperature=0.01,
+                    max_new_tokens=200,             
+                    repetition_penalty=1.1,         
+                    do_sample=True,                 
+                    temperature=0.2,               
+                    top_p=0.9,
                     pad_token_id=tokenizer.eos_token_id
                 )
             
             input_length = inputs["input_ids"].shape[1]
             cevap = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
             
-            cevap = re.sub(r'^(darıca[n]?\s*belediye[siktmnozâa-z]*\s*[\w\s\.\']*(asistanı[ymız]*|oldum)[\.\,\!]?\s*)', '', cevap, flags=re.IGNORECASE).strip()
-            
             p_check = cevap.lower()
-            bad_words = [
-                "darıcakent", "bilmediğin için", "uygolamasını kullan", "tesis_adi", 
-                "beled-i mahsusa", "almaq", "etməyinizdir", "detaali", "uydurma", "1-5-3", "dial"
-            ]
+            bad_words = ["darıcakent", "bilmediğin için", "uygolamasını kullan", "tesis_adi", "beled-i mahsusa", "almaq", "etməyinizdir"]
             
             if cevap.startswith("{") or "{" in cevap or "}" in cevap or any(bad in p_check for bad in bad_words) or len(cevap) < 5:
                 cevap = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
