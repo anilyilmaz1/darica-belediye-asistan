@@ -1,10 +1,22 @@
 import csv
+import os
+
 
 def darica_hizmet_hesapla(hizmet_tipi: str, parametre: str = "", yas: int = 0) -> str:
+    """Darıca Belediyesi hizmet ve tarife hesaplama ajanı.
+
+    Args:
+        hizmet_tipi (str): Nikah, otopark, spor, su, atık vb. hizmet kategorisi.
+        parametre (str): Vatandaşın girdiği ham sorgu metni.
+        yas (int, optional): Kullanıcı yaş bilgisi (varsayılan: 0).
+
+    Returns:
+        str: Hesaplanan güncel tarife ve indirim bilgisi.
+    """
     hizmet = hizmet_tipi.lower()
     p_lower = parametre.lower()
 
-    # 1. Nikah Ücreti Hesaplama
+    # Nikah hizmetleri ve salon tarifeleri
     if "nikah" in hizmet:
         if "hafta sonu" in p_lower:
             return "Darıca Belediyesi hafta sonu nikah kıyma ücreti 1.600 TL'dir."
@@ -13,26 +25,26 @@ def darica_hizmet_hesapla(hizmet_tipi: str, parametre: str = "", yas: int = 0) -
         else:
             return "Darıca Belediyesi hafta içi salon nikahı ücreti 900 TL'dir."
 
-    # 2. Otopark Ücreti Hesaplama
+    # Otopark ve Karavan Parkı tarifeleri
     elif "otopark" in hizmet or "karavan" in p_lower:
         if "karavan" in p_lower:
-            if "aylık" in p_lower or "abonelik" in p_lower:
+            if any(k in p_lower for k in ["aylık", "abonelik"]):
                 return "Darıca Millet Bahçesi Karavan Parkı aylık abonelik ücreti 6.000 TL'dir."
             else:
                 return "Darıca Millet Bahçesi Karavan Parkı ücretleri: 0-1 saat 40 TL, 1-24 saat 300 TL, aylık abonelik ise 6.000 TL'dir."
         elif "engelli" in p_lower:
             return "Engelli araç kartı bulunan araçlar belediye otoparklarından tamamen ücretsiz yararlanır."
-        elif "aylık" in p_lower or "abonelik" in p_lower:
+        elif any(k in p_lower for k in ["aylık", "abonelik"]):
             return "Belediye otoparklarında aylık otopark aboneliği seçeneği bulunmamaktadır (Yalnızca Karavan Parkı için aylık abonelik 6.000 TL'dir)."
         else:
             return "Belediye otoparklarında ilk 6 saat ücretsizdir. Sonrasında 6-8 saat 20 TL, 8-12 saat 40 TL, 12-24 saat arası için 200 TL'dir."
 
-    # 3. Spor Tesisi & Kültür Merkezi İndirimi ve Salon Kiralaması
+    # Spor tesisleri, kültür merkezleri ve salon kiralamaları
     elif any(k in hizmet for k in ["spor", "tesis", "kültür"]) or "salon" in p_lower:
-        if "kültür" in hizmet or "salon" in p_lower or "kiralama" in p_lower:
-            if "dernek" in p_lower or "okul" in p_lower:
+        if any(k in hizmet or k in p_lower for k in ["kültür", "kiralama"]) or "salon" in p_lower:
+            if any(k in p_lower for k in ["dernek", "okul"]):
                 return "Dernekler ve okullara kültür merkezi salon kiralamalarında %70 indirim uygulanır."
-            elif "küçük" in p_lower or "400" in p_lower:
+            elif any(k in p_lower for k in ["küçük", "400"]):
                 return "Darıca Kültür Merkezi küçük salon (400 kişilik) yarım günlük kiralama ücreti 800 TL'dir (Dernek/Okullara %70 indirim uygulanır)."
             else:
                 return "Darıca Kültür Merkezi büyük salon (1200 kişilik) yarım günlük kiralama ücreti 2.800 TL, küçük salon (400 kişilik) ise 800 TL'dir. Dernek ve okullara %70 indirim yapılır."
@@ -44,14 +56,14 @@ def darica_hizmet_hesapla(hizmet_tipi: str, parametre: str = "", yas: int = 0) -
             else:
                 return "Spor tesislerimizde standart tarife geçerlidir. Tesis girişi için Beyaz Masa'dan ücretsiz Darıca Kart alınmalıdır. 65 yaş üzeri vatandaşlara ve öğrencilere %50 indirim uygulanır."
 
-    # 4. Su Aboneliği & Kesinti Açma Ücreti
+    # Su aboneliği ve kesinti hizmetleri
     elif "su" in hizmet:
         if any(k in p_lower for k in ["açma", "kesin", "fatura"]):
             return "Kesilen suyun yeniden açılması için vadesi geçmiş borcun yanı sıra 420 TL su açma ücreti ödenmelidir."
         else:
             return "Konut yeni su aboneliği güvence bedeli 1.154 TL'dir. Kesilen suyun yeniden açma ücreti ise 420 TL'dir."
 
-    # 5. Sıfır Atık / Atık Yağ
+    # Sıfır atık ve geri dönüşüm teşvikleri
     elif "atık" in hizmet or "yağ" in p_lower:
         return "5 litre bitkisel atık yağ getiren vatandaşlarımıza muhtarlıklardaki atık getirme merkezlerinde 1 litre deterjan hediye edilmektedir."
 
@@ -59,54 +71,67 @@ def darica_hizmet_hesapla(hizmet_tipi: str, parametre: str = "", yas: int = 0) -
         return "Belirtilen hizmet kategorisi için belediye çağrı merkezimizi (153) arayabilirsiniz."
 
 
-def tesis_bilgisi_sorgula(sorgu: str) -> str:
-    """CSV veritabanından tesislerin çalışma saatlerini, konum, ders/kurs ve ücretlerini getirir."""
+def tesis_bilgisi_sorgula(sorgu: str, csv_path: str = "tesisler.csv") -> str:
+    """CSV veritabanı üzerinden tesis, çalışma saatleri, konum ve kurs sorgulama ajanı.
+
+    Args:
+        sorgu (str): Kullanıcı sorgu metni.
+        csv_path (str, optional): Tesis verilerinin bulunduğu CSV yolu.
+
+    Returns:
+        str: Biçimlendirilmiş tesis ve çalışma saati bilgisi.
+    """
     sorgu_lower = sorgu.lower()
-    
-    # 1. Mahalle Tespiti
+
+    if not os.path.exists(csv_path):
+        return f"Tesis bilgi veritabanı ({csv_path}) bulunamadı."
+
     mahalleler = [
         "yalı", "bağlarbaşı", "kazım karabekir", "yeni", "fevzi çakmak",
         "cami", "piri reis", "emek", "osmangazi", "abdi ipekçi",
         "zincirlikuyu", "bayramoğlu", "sırasöğütler", "nenehatun"
     ]
-    aranan_mahalle = None
-    for m in mahalleler:
-        if m in sorgu_lower:
-            aranan_mahalle = m
-            break
+    aranan_mahalle = next((m for m in mahalleler if m in sorgu_lower), None)
 
-    # 2. Kategori Tespiti
     is_kutuphane_sorgu = any(k in sorgu_lower for k in ["ders", "etüt", "kütüphane", "yks", "okuma", "çalışma", "kurs"])
     is_spor_sorgu = any(s in sorgu_lower for s in ["yüzme", "fitness", "tenis", "basketbol", "voleybol", "paten", "spor", "kort", "havuz", "salon"])
 
-    eslesen_tesisler = []
-
-    stop_words = {"için", "peki", "var", "mı", "mi", "mu", "mü", "nerede", "nereler", "ve", "ile", "ne", "nasıl", "hangi", "gün", "günleri", "saat", "saatleri", "sınırları", "içindeki"}
+    stop_words = {
+        "için", "peki", "var", "mı", "mi", "mu", "mü", "nerede", "nereler", 
+        "ve", "ile", "ne", "nasıl", "hangi", "gün", "günleri", "saat", 
+        "saatleri", "sınırları", "içindeki"
+    }
     sorgu_kelimeleri = [w for w in sorgu_lower.split() if len(w) > 2 and w not in stop_words]
 
+    eslesen_tesisler = []
+
     try:
-        with open("tesisler.csv", mode="r", encoding="utf-8") as file:
+        with open(csv_path, mode="r", encoding="utf-8") as file:
             reader = csv.DictReader(file)
             for row in reader:
-                tesis_adi = row['tesis_adi'].lower()
-                tur = row['tur'].lower()
-                mahalle = row['mahalle'].lower()
+                tesis_adi = row.get('tesis_adi', '').strip()
+                tur = row.get('tur', '').strip()
+                mahalle = row.get('mahalle', '').strip()
+                acilis = row.get('acilis', '').strip()
+                kapanis = row.get('kapanis', '').strip()
+                kapali_gun = row.get('kapali_gun', '').strip()
+                aylik_ucret = row.get('aylik_ucret_tl', '').strip()
 
-                ucret = "Ücretsiz" if row['aylik_ucret_tl'] == "0" else f"{row['aylik_ucret_tl']} TL/ay"
-                kapali = f" (Kapalı Gün: {row['kapali_gun']})" if row['kapali_gun'].lower() != "yok" else ""
-                
-                bilgi = (f"📍 **{row['tesis_adi']}** ({row['tur'].title()} - {row['mahalle']} Mah.)\n"
-                         f"⏰ Çalışma Saatleri: {row['acilis']} - {row['kapanis']}{kapali}\n"
-                         f"💰 Ücret: {ucret}")
+                ucret = "Ücretsiz" if aylik_ucret in ["0", ""] else f"{aylik_ucret} TL/ay"
+                kapali_str = f" (Kapalı Gün: {kapali_gun})" if kapali_gun.lower() != "yok" else ""
 
-                # Mahalle Filtrelemesi: Sorguda mahalle adı varsa ve tesiste geçmiyorsa atla
-                if aranan_mahalle and (aranan_mahalle not in mahalle and aranan_mahalle not in tesis_adi):
+                bilgi = (
+                    f"📍 **{tesis_adi}** ({tur.title()} - {mahalle.title()} Mah.)\n"
+                    f"⏰ Çalışma Saatleri: {acilis} - {kapanis}{kapali_str}\n"
+                    f"💰 Ücret: {ucret}"
+                )
+
+                if aranan_mahalle and (aranan_mahalle not in mahalle.lower() and aranan_mahalle not in tesis_adi.lower()):
                     continue
 
-                is_kutuphane_row = any(k in tur for k in ["kütüphane", "etüt", "yks", "tiyatro", "enstrüman"])
-                is_spor_row = any(s in tur for s in ["yüzme", "fitness", "tenis", "basketbol", "voleybol", "buz pateni", "pilates", "spor"])
+                is_kutuphane_row = any(k in tur.lower() for k in ["kütüphane", "etüt", "yks", "tiyatro", "enstrüman"])
+                is_spor_row = any(s in tur.lower() for s in ["yüzme", "fitness", "tenis", "basketbol", "voleybol", "buz pateni", "pilates", "spor"])
 
-                # Kategori İzolasyonu: Kütüphane arandıysa spor tesislerini getirme, spor arandıysa kütüphaneleri getirme
                 if is_kutuphane_sorgu and not is_spor_sorgu:
                     if is_kutuphane_row:
                         eslesen_tesisler.append(bilgi)
@@ -114,8 +139,7 @@ def tesis_bilgisi_sorgula(sorgu: str) -> str:
                     if is_spor_row:
                         eslesen_tesisler.append(bilgi)
                 else:
-                    # Genel kelime arama
-                    if any(w in tesis_adi or w in tur or w in mahalle for w in sorgu_kelimeleri):
+                    if any(w in tesis_adi.lower() or w in tur.lower() or w in mahalle.lower() for w in sorgu_kelimeleri):
                         eslesen_tesisler.append(bilgi)
 
         if not eslesen_tesisler:
@@ -131,5 +155,5 @@ def tesis_bilgisi_sorgula(sorgu: str) -> str:
         else:
             return "\n\n".join(eslesen_tesisler[:5])
 
-    except FileNotFoundError:
-        return "Tesis bilgi veritabanı (tesisler.csv) bulunamadı."
+    except Exception as e:
+        return f"Tesis bilgileri sorgulanırken bir hata oluştu: {str(e)}"
