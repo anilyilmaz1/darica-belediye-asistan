@@ -70,11 +70,15 @@ def kaynaklari_yukle():
     pdf_text = ""
     if os.path.exists("rehber.pdf"):
         try:
-            reader = pypdf.PdfReader("rehber.pdf")
+            # strict=False parametresi bozuk PDF stream hatalarını yok sayar
+            reader = pypdf.PdfReader("rehber.pdf", strict=False)
             for page in reader.pages:
-                extracted = page.extract_text()
-                if extracted:
-                    pdf_text += extracted + "\n\n"
+                try:
+                    extracted = page.extract_text()
+                    if extracted:
+                        pdf_text += extracted + "\n\n"
+                except Exception:
+                    continue  # Hatalı sayfayı atlayıp diğerlerine devam et
         except Exception as e:
             st.error(f"PDF okunurken hata oluştu: {e}")
             
