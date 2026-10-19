@@ -7,14 +7,12 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 from araclar import darica_hizmet_hesapla, tesis_bilgisi_sorgula
 
-# Sayfa yapılandırması
 st.set_page_config(
     page_title="Darıca Belediyesi Akıllı Vatandaş Asistanı",
     page_icon="🏛️",
     layout="wide"
 )
 
-# Özel Arayüz Stilleri (CSS)
 st.markdown("""
     <style>
     .main-title { font-size: 2.2rem; color: #1E3A8A; font-weight: 700; }
@@ -30,7 +28,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Yan Panel (Sidebar)
 with st.sidebar:
     st.title("🏛️ Darıca-Asistan")
     st.markdown("**Geliştirici:** Anıl Yılmaz")
@@ -54,7 +51,6 @@ with st.sidebar:
 
 st.markdown('<p class="main-title">🏛️ Darıca Belediyesi Akıllı Vatandaş Asistanı</p>', unsafe_allow_html=True)
 
-# Model ve Doküman Yükleme
 @st.cache_resource
 def kaynaklari_yukle():
     pdf_text = ""
@@ -86,18 +82,15 @@ def kaynaklari_yukle():
 with st.spinner("Model ve hizmet rehberi yükleniyor..."):
     tokenizer, model, rehber_metni = kaynaklari_yukle()
 
-# Sohbet geçmişi ilklendirme
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "Merhaba Sayın Vatandaşımız! Darıca Belediyesi hizmetleri, tesislerimiz, çalışma saatleri veya başvuru ücretleri hakkında size nasıl yardımcı olabilirim?"}
     ]
 
-# Geçmiş mesajları ekrana basma
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# Kullanıcı girdisi işleme
 if prompt := st.chat_input("Sorunuzu yazınız..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -108,7 +101,6 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
         yas_match = re.search(r'(\d+)\s*(yaş|yaşında)', p_lower)
         yas = int(yas_match.group(1)) if yas_match else 0
         
-        # Tesis veritabanında aratılacak net anahtar kelimeler
         tesis_anahtarlari = ["havuz", "yüzme", "kütüphane", "tenis", "buz pateni", "fitness", "paten", "bakımevi", "etüt"]
         is_tesis_sorgusu = any(k in p_lower for k in tesis_anahtarlari)
 
@@ -144,9 +136,32 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             st.markdown(cevap)
             st.session_state.messages.append({"role": "assistant", "content": cevap})
 
-        # 3. Aşama: RAG ve LLM Üretimi (Konu dışı veya rehber soruları)
+        # 3. Aşama: RAG ve LLM Üretimi (Gelişmiş Chunking & Kök Tabanlı RAG)
         else:
-            rehber_ozet = rehber_metni[:3000] if len(rehber_metni) > 3000 else rehber_metni
+            chunk_size = 800
+            overlap = 200
+            chunks = []
+            for i in range(0, len(rehber_metni), max(1, chunk_size - overlap)):
+                chunks.append(rehber_metni[i:i + chunk_size])
+
+            temiz_soru = re.sub(r'[^\w\s]', '', p_lower)
+            stop_words = ["için", "nedir", "nelerdir", "nasıl", "veya", "yapılır", "paketinden", "yararlanmak"]
+            soru_kelimeleri = [w for w in temiz_soru.split() if len(w) > 2 and w not in stop_words]
+            soru_kokleri = [w[:4] for w in soru_kelimeleri]
+
+            eslesmeler = []
+            for chunk in chunks:
+                chunk_l = chunk.lower()
+                puan = sum(1 for kok in soru_kokleri if kok in chunk_l)
+                if puan > 0:
+                    eslesmeler.append((puan, chunk))
+
+            eslesmeler.sort(key=lambda x: x[0], reverse=True)
+            if eslesmeler:
+                rehber_ozet = "\n---\n".join([item[1] for item in eslesmeler[:3]])
+            else:
+                rehber_ozet = rehber_metni[:2500]
+
             messages = [
                 {  
                     "role": "system",
@@ -188,11 +203,10 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             input_length = inputs["input_ids"].shape[1]
             cevap = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
             
-            # Gelişmiş güvenlik, JSON tespiti ve halüsinasyon filtreleri
             p_check = cevap.lower()
             bad_words = [
-                "asistanısın", "darıcakent", "bilmediğin için", "uygulamasını kullan", 
-                "tesis_adi", "daricsi", "beledicisi", "vatan-asistan", "beled-i mahsusa"
+                "darıcakent", "bilmediğin için", "uygolamasını kullan", "uygulamasını kullan",
+                "tesis_adi", "daricsi", "beledicisi", "beled-i mahsusa", "borsa", "borsaya", "yardım ister misiniz"
             ]
             
             if cevap.startswith("{") or "{" in cevap or "}" in cevap or any(bad in p_check for bad in bad_words):
