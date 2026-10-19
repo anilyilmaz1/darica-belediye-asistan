@@ -113,15 +113,20 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        p_lower = prompt.lower()
+       p_lower = prompt.lower()
         yas_match = re.search(r'(\d+)\s*(yaş|yaşında)', p_lower)
         yas = int(yas_match.group(1)) if yas_match else 0
         
-        tesis_anahtarlari = ["havuz", "yüzme", "kütüphane", "tenis", "buz pateni", "fitness", "paten", "bakımevi", "etüt"]
+        # Tesis anahtar kelimelerine hayvan/sahiplendirme terimleri eklendi
+        tesis_anahtarlari = [
+            "havuz", "yüzme", "kütüphane", "tenis", "buz pateni", "fitness", 
+            "paten", "bakımevi", "etüt", "köpek", "kedi", "hayvan", "sahiplen"
+        ]
         is_tesis_sorgusu = any(k in p_lower for k in tesis_anahtarlari)
 
-        # 1. Aşama: Tarife, İndirim ve Yaş Hesaplama Ajanı (Spesifik tesis soruları hariç)
-        if not is_tesis_sorgusu and (any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl", "indirim", "hesapla", "atık", "yağ", "deterjan"]) or yas > 0):
+        # 1. Aşama: Tarife, İndirim ve Yaş Hesaplama Ajanı
+        # "paralı", "ücretli" kelimeleri eklendi
+        if not is_tesis_sorgusu and (any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl", "paralı", "ücretli", "indirim", "hesapla", "atık", "yağ", "deterjan"]) or yas > 0):
             hizmet_tipi = "genel"
             if "nikah" in p_lower:
                 hizmet_tipi = "nikah"
@@ -152,7 +157,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             st.markdown(cevap)
             st.session_state.messages.append({"role": "assistant", "content": cevap})
 
-        # 3. Aşama: RAG ve LLM Üretimi (Çince/Halüsinasyon Korumalı & Kararlı RAG)
+        # 3. Aşama: RAG ve LLM Üretimi (Gelişmiş Halüsinasyon Süzgeçli)
         else:
             FALLBACK = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
 
@@ -188,26 +193,23 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                     **inputs,
                     max_new_tokens=150,
                     do_sample=False,
-                    repetition_penalty=1.03,                        # Kararlılık için düşürüldü
-                    suppress_tokens=get_cjk_token_ids(tokenizer),  # Çince/Asya token'ları üretim seviyesinde yasaklandı
+                    repetition_penalty=1.03,
+                    suppress_tokens=get_cjk_token_ids(tokenizer),
                     pad_token_id=tokenizer.eos_token_id
                 )
 
             input_length = inputs["input_ids"].shape[1]
             cevap = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
 
-            # --- METİN TEMİZLEME VE KURTARMA ---
-            # 1. Çince karakterleri ve süslü parantezleri sil
+            # Metin Temizleme
             cevap = re.sub(r'[\u3400-\u4dbf\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]+', '', cevap)
             cevap = re.sub(r'[{}]', '', cevap)
 
-            # 2. Girişteki ezber kalıpları ve sızıntıları sil
             cevap = re.sub(
                 r'^(darıca[n]?\s*belediye[siktmnozâa-z]*\s*[\w\s\.\']*(asistanı[ymız]*|oldum)[\.\,\!]?\s*)',
                 '', cevap, flags=re.IGNORECASE
             ).strip()
 
-            # 3. Gereksiz kuyruk cümlelerini kes
             for kesici in ("Bilmediğiniz", "kullanabilirim"):
                 if kesici in cevap:
                     cevap = cevap.split(kesici)[0].strip()
@@ -215,14 +217,16 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             cevap = cevap.replace("kapatdığınızda", "kapattığınızda")
             cevap = re.sub(r'\s{2,}', ' ', cevap).strip()
 
-            # 4. Cümle yarım kaldıysa son tam noktaya kadar kes
             if cevap and cevap[-1] not in ".!?":
                 son = max(cevap.rfind("."), cevap.rfind("!"), cevap.rfind("?"))
                 if son > 20:
                     cevap = cevap[:son + 1]
 
-            # --- KALİTE KONTROL VE FALLBACK ---
-            bad_words = ["tesis_adi", "almaq", "etməyinizdir", "beled-i mahsusa"]
+            # Genişletilmiş Halüsinasyon ve Kalite Kontrolü
+            bad_words = [
+                "tesis_adi", "almaq", "etməyinizdir", "beled-i mahsusa", 
+                "teyzelemektedir", "uydurma", "mutlu hikayeler", "kimsenin yardımını"
+            ]
             p_check = cevap.lower()
             if len(cevap) < 10 or any(bad in p_check for bad in bad_words):
                 cevap = FALLBACK
