@@ -142,25 +142,31 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
 
         # 3. Aşama: RAG ve LLM Üretimi
         else:
+            rehber_ozet = rehber_metni[:3000] if len(rehber_metni) > 3000 else rehber_metni
             messages = [
-                {
+                {  
                     "role": "system",
-                "content": (
-                    "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın. "
-                    "Aşağıda verilen rehber dökümanındaki bilgileri dikkatlice inceleyerek vatandaşın sorusuna net, eksiksiz ve kurumsal bir dille cevap ver.\n\n"
-                    "KURALLAR:\n"
-                    "1. Rehberde yer alan sosyal yardımlar (Hoş Geldin Bebek vb.), ruhsat ve belediye hizmetleri hakkında doğru ve detaylı bilgi sağla.\n"
-                    "2. Yanıtına kesinlikle 'Darıca Belediyesi'nin resmi vatandaş asistanı oldum' gibi yapay ve gereksiz giriş cümleleriyle başlama. Doğrudan soruya cevap ver.\n"
-                    "3. Yalnızca rehberde KESİNLİKLE bulunmayan veya belediye hizmetleri dışındaki sorular için SADECE şu cümleyi söyle: "
-                    "\"Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz.\"\n\n"
-                    f"[REHBER DÖKÜMANI]\n{rehber_metni}\n[BAĞLAM SONU]"
-                )
+                    "content": (
+                        "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın. "
+                        "Aşağıda verilen rehber bilgilerini kullanarak soruyu kısa, net ve kurumsal bir dille yanıtla.\n\n"
+                        "KURALLAR:\n"
+                        "1. Yanıtına kesinlikle 'Darıca Belediyesi'nin resmi vatandaş asistanı oldum' gibi yapay ifadeler ekleme.\n"
+                        "2. Yalnızca rehberde KESİNLİKLE bulunmayan veya belediye dışındaki sorular için SADECE şu cümleyi söyle: "
+                        "\"Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz.\"\n\n"
+                        f"[REHBER BİLGİLERİ]\n{rehber_ozet}\n[BAĞLAM SONU]"
+                    )
                 },
                 {"role": "user", "content": prompt}
             ]
             
             prompt_str = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            inputs = tokenizer(prompt_str, return_tensors="pt").to(model.device)
+            
+            inputs = tokenizer(
+                prompt_str, 
+                return_tensors="pt", 
+                truncation=True, 
+                max_length=2048
+            ).to(model.device)
             
             with torch.no_grad():
                 outputs = model.generate(
@@ -188,5 +194,5 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             if not cevap:
                 cevap = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
 
-        st.markdown(cevap)
-        st.session_state.messages.append({"role": "assistant", "content": cevap})
+            st.markdown(cevap)
+            st.session_state.messages.append({"role": "assistant", "content": cevap})
