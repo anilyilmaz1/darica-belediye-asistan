@@ -18,13 +18,14 @@ def darica_hizmet_hesapla(hizmet_tipi: str, parametre: str = "", yas: int = 0) -
 
     # Nikah hizmetleri ve salon tarifeleri
     if "nikah" in hizmet:
-        if "hafta sonu" in p_lower:
-            return "Darıca Belediyesi hafta sonu nikah kıyma ücreti 1.600 TL'dir."
-        elif any(k in p_lower for k in ["dış", "otel", "bahçe", "düğün"]):
+        # Dış mekan/otel önceliği en üstte olmalı
+        if any(k in p_lower for k in ["dış", "otel", "bahçe", "düğün"]):
             return "Belediye salonları dışındaki mekânlarda (otel, bahçe, düğün salonu vb.) nikah kıyma ücreti 4.500 TL'dir."
+        elif "hafta sonu" in p_lower:
+            return "Darıca Belediyesi hafta sonu nikah kıyma ücreti 1.600 TL'dir."
         else:
             return "Darıca Belediyesi hafta içi salon nikahı ücreti 900 TL'dir."
-
+        
     # Otopark ve Karavan Parkı tarifeleri
     elif "otopark" in hizmet or "karavan" in p_lower:
         if "karavan" in p_lower:
