@@ -93,6 +93,40 @@ def kaynaklari_yukle():
     
     return tokenizer, model, pdf_text
 
+def en_ilgili_paragrafi_bul(rehber_metni, soru):
+    """PDF metni içerisinden kullanıcının sorusuyla en çok eşleşen paragrafı seçer."""
+    paragraflar = [p.strip() for p in rehber_metni.split("\n\n") if len(p.strip()) > 20]
+    
+    # Stop-word (etkisiz kelimeler) temizliği
+    etkisizler = {"ve", "veya", "bir", "bu", "ile", "mi", "mı", "mu", "mü", "için", "da", "de", "olduğunu", "miyim", "mıyım"}
+    soru_kelimeleri = set(re.findall(r'\w+', soru.lower())) - etkisizler
+    
+    # Eş anlamlı kelime haritası
+    es_anlamlilar = {
+        "depozito": "güvence",
+        "sonlandırmak": "kapat",
+        "sonlandırdığımda": "kapatıldığında",
+        "ücretsiz": "bedava",
+        "paralı": "ücret"
+    }
+    
+    genisletilmis_kelimeler = set(soru_kelimeleri)
+    for k in soru_kelimeleri:
+        if k in es_anlamlilar:
+            genisletilmis_kelimeler.add(es_anlamlilar[k])
+            
+    en_iyi_paragraf = ""
+    en_yuksek_skor = 0
+    
+    for p in paragraflar:
+        p_lower = p.lower()
+        skor = sum(1 for k in genisletilmis_kelimeler if k in p_lower)
+        if skor > en_yuksek_skor:
+            en_yuksek_skor = skor
+            en_iyi_paragraf = p
+            
+    return en_iyi_paragraf if en_yuksek_skor >= 1 else rehber_metni[:1500]
+
 with st.spinner("Model ve hizmet rehberi yükleniyor..."):
     tokenizer, model, rehber_metni = kaynaklari_yukle()
 
@@ -161,22 +195,26 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             st.markdown(cevap)
             st.session_state.messages.append({"role": "assistant", "content": cevap})
 
-        # 3. Aşama: RAG ve LLM Üretimi (Sade Prompt + LoRA Artifact Temizleyici)
+        # 3. Aşama: RAG ve LLM Üretimi (Mini-Retriever Destekli Nokta Atışı RAG)
         else:
             FALLBACK = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
+
+            # Tüm PDF yerine sadece soruyla ilgili paragrafı seçiyoruz
+            ilgili_baglam = en_ilgili_paragrafi_bul(rehber_metni, prompt)
 
             messages = [
                 {
                     "role": "system",
                     "content": (
                         "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın. "
-                        "Sadece aşağıda verilen rehberdeki bilgilere dayanarak vatandaşın sorusuna "
-                        "doğrudan, kısa, net ve mantıklı bir Türkçe ile cevap ver."
+                        "Aşağıda verilen bilgiye dayanarak vatandaşın sorusunu "
+                        "kısa, net ve kurumsal bir Türkçe ile yanıtla. "
+                        "Bilgi dışında rakam veya kural uydurma."
                     )
                 },
                 {
                     "role": "user",
-                    "content": f"[REHBER BİLGİSİ]\n{rehber_metni}\n\n[SORU]\n{prompt}"
+                    "content": f"[İLGİLİ REHBER BİLGİSİ]\n{ilgili_baglam}\n\n[SORU]\n{prompt}"
                 }
             ]
 
@@ -194,53 +232,41 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=120,
+                    max_new_tokens=100,
                     do_sample=False,
-                    repetition_penalty=1.05,                        # Cümle yapısını korumak için ideal
-                    suppress_tokens=get_cjk_token_ids(tokenizer),  # Çince engeli
+                    repetition_penalty=1.03,
+                    suppress_tokens=get_cjk_token_ids(tokenizer),
                     pad_token_id=tokenizer.eos_token_id
                 )
 
             input_length = inputs["input_ids"].shape[1]
             cevap = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
 
-            # --- METİN TEMİZLEME VE ARTİFACT (EZBER) AYIKLAMA ---
-            # 1. Çince karakterleri ve süslü parantezleri sil
+            # --- METİN TEMİZLEME VE SÜZGEÇ ---
             cevap = re.sub(r'[\u3400-\u4dbf\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]+', '', cevap)
             cevap = re.sub(r'[{}]', '', cevap)
-
-            # 2. LoRA fine-tune veri setinden sızan saçma kalıpları düzelt/sil
             cevap = re.sub(r'\bmutlu\s+hikay[eö]\s*[\w]*\b', '', cevap, flags=re.IGNORECASE)
-            cevap = cevap.replace("ödemek zorunda kalmadığınıza göre", "borcunuz bulunmuyorsa")
             cevap = cevap.replace("kapatdığınızda", "kapattığınızda")
 
-            # 3. Girişteki ezber asistan kalıplarını temizle
             cevap = re.sub(
                 r'^(darıca[n]?\s*belediye[siktmnozâa-z]*\s*[\w\s\.\']*(asistanı[ymız]*|oldum)[\.\,\!]?\s*)',
                 '', cevap, flags=re.IGNORECASE
             ).strip()
 
-            # 4. Gereksiz kuyruk cümlelerini kes
             for kesici in ("Bilmediğiniz", "kullanabilirim"):
                 if kesici in cevap:
                     cevap = cevap.split(kesici)[0].strip()
 
-            # Bozuk boşlukları düzenle
             cevap = re.sub(r'\s{2,}', ' ', cevap).strip()
 
-            # 5. Cümle yarım kaldıysa son noktaya kadar kes
             if cevap and cevap[-1] not in ".!?":
                 son = max(cevap.rfind("."), cevap.rfind("!"), cevap.rfind("?"))
-                if son > 20:
+                if son > 15:
                     cevap = cevap[:son + 1]
 
-            # 6. Kalite ve Halüsinasyon Kontrolü
-            bad_words = [
-                "tesis_adi", "almaq", "etməyinizdir", "beled-i mahsusa", 
-                "teyzelemektedir", "uydurma"
-            ]
+            bad_words = ["tesis_adi", "almaq", "etməyinizdir", "beled-i mahsusa", "teyzelemektedir"]
             p_check = cevap.lower()
-            if len(cevap) < 10 or any(bad in p_check for bad in bad_words):
+            if len(cevap) < 8 or any(bad in p_check for bad in bad_words):
                 cevap = FALLBACK
 
             if cevap.isupper():
