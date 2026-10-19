@@ -136,15 +136,15 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             st.markdown(cevap)
             st.session_state.messages.append({"role": "assistant", "content": cevap})
 
-        # 3. Aşama: RAG ve LLM Üretimi (Madde Bazlı Akıllı RAG)
+        # 3. Aşama: RAG ve LLM Üretimi (Madde Bazlı RAG & Otomatik Metin Temizleme)
         else:
             maddeler = re.split(r'\n(?=\d+\.\s)', rehber_metni.strip())
             if not maddeler or len(maddeler) <= 1:
                 maddeler = [p.strip() for p in rehber_metni.split("\n\n") if len(p.strip()) > 30]
 
             temiz_soru = re.sub(r'[^\w\s]', '', p_lower)
-            stop_words = ["için", "nedir", "nelerdir", "nasıl", "veya", "yapılır", "paketinden", "yararlanmak"]
-            soru_kelimeleri = [w for w in temiz_soru.split() if len(w) > 2 and w not in stop_words]
+            stop_words = ["için", "nedir", "nelerdir", "nasıl", "veya", "yapılır", "paketinden", "yararlanmak", "edilir", "mi", "mu", "mı"]
+            soru_kelimeleri = [w for w in temiz_soru.split() if len(w) >= 2 and w not in stop_words]
             soru_kokleri = [w[:4] for w in soru_kelimeleri]
 
             eslesmeler = []
@@ -163,17 +163,14 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             messages = [
                 {
                     "role": "system",
-                    "content": "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın. Sadece verilen rehber bilgilerine dayanarak kısa, net ve kurumsal bir dille cevap ver."
+                    "content": "Sen Darıca Belediyesi AI asistanısın. Sadece verilen rehberdeki bilgilere dayanarak doğrudan cevap ver."
                 },
                 {
                     "role": "user",
                     "content": (
-                        f"[REHBER BİLGİLERİ]\n{rehber_ozet}\n[REHBER SONU]\n\n"
+                        f"[REHBER BİLGİSİ]\n{rehber_ozet}\n[REHBER SONU]\n\n"
                         f"Vatandaş Sorusu: {prompt}\n\n"
-                        "KURALLAR:\n"
-                        "1. Yanıtında SADECE yukarıdaki rehber bilgilerini kullan.\n"
-                        "2. Rehberde bulunmayan sorular için SADECE 'Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz.' de.\n"
-                        "3. Kesinlikle website adresi, link veya yapay giriş cümleleri ekleme."
+                        "ÖNEMLİ: Cevaba KESİNLİKLE 'Darıca Belediyesi'nin resmi asistanıyım' gibi giriş cümleleri ekleme. Doğrudan soruya cevap ver. Rehberde bilgi yoksa SADECE 'Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz.' yaz."
                     )
                 }
             ]
@@ -194,7 +191,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                     repetition_penalty=1.2,         
                     no_repeat_ngram_size=3,         
                     do_sample=True,                 
-                    temperature=0.1,               
+                    temperature=0.2,               
                     top_p=0.9,
                     pad_token_id=tokenizer.eos_token_id
                 )
@@ -202,21 +199,16 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             input_length = inputs["input_ids"].shape[1]
             cevap = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
             
-            p_check = cevap.lower()
-            bad_words = [
-                "darıcakent", "bilmediğin için", "uygolamasını kullan", "uygulamasını kullan",
-                "tesis_adi", "daricsi", "beledicisi", "beled-i mahsusa", "borsa", "vatanav",
-                "darican", "daricabeledim", "formulardan", "diyor.", "website", "http", "www"
-            ]
+            cevap = re.sub(r'^(darıca[n]?\s*belediye[siktmnozâa-z]*\s*[\w\s\.\']*(asistanı[ymız]*|oldum)[\.\,\!]?\s*)', '', cevap, flags=re.IGNORECASE).strip()
             
-            if cevap.startswith("{") or "{" in cevap or "}" in cevap or any(bad in p_check for bad in bad_words):
+            p_check = cevap.lower()
+            bad_words = ["darıcakent", "bilmediğin için", "uygolamasını kullan", "tesis_adi", "beled-i mahsusa"]
+            
+            if cevap.startswith("{") or "{" in cevap or "}" in cevap or any(bad in p_check for bad in bad_words) or len(cevap) < 5:
                 cevap = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
                 
             if cevap.isupper():
                 cevap = cevap.capitalize()
-                
-            if not cevap:
-                cevap = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
 
             st.markdown(cevap)
             st.session_state.messages.append({"role": "assistant", "content": cevap})
