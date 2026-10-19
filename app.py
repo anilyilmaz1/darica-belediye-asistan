@@ -108,19 +108,19 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
         yas_match = re.search(r'(\d+)\s*(yaş|yaşında)', p_lower)
         yas = int(yas_match.group(1)) if yas_match else 0
         
-        # 1. Aşama: Tarife, İndirim ve Yaş Hesaplama Ajanı
+       # 1. Aşama: Tarife, İndirim ve Yaş Hesaplama Ajanı
         if any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl", "indirim", "hesapla", "atık", "yağ", "deterjan"]) or yas > 0:
             hizmet_tipi = "genel"
             if "nikah" in p_lower:
                 hizmet_tipi = "nikah"
             elif "otopark" in p_lower or "karavan" in p_lower:
                 hizmet_tipi = "otopark"
-            elif any(k in p_lower for k in ["spor", "tesis", "kültür", "salon"]):
-                hizmet_tipi = "spor"
-            elif "su" in p_lower:
-                hizmet_tipi = "su"
-            elif "atık" in p_lower or "yağ" in p_lower:
+            elif "atık" in p_lower or "yağ" in p_lower or "deterjan" in p_lower:
                 hizmet_tipi = "atık"
+            elif any(k in p_lower for k in ["spor", "tesis", "kültür"]) or ("salon" in p_lower and "spor" not in p_lower):
+                hizmet_tipi = "spor"
+            elif re.search(r'\bsu(yu|yun|ya|da|dan)?\b', p_lower):
+                hizmet_tipi = "su"
             
             st.markdown(f'<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: darica_hizmet_hesapla]</b> (Hizmet: {hizmet_tipi})</div>', unsafe_allow_html=True)
             hesaplanan = darica_hizmet_hesapla(hizmet_tipi=hizmet_tipi, parametre=prompt, yas=yas)
