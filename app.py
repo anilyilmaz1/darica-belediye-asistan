@@ -7,12 +7,14 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 from araclar import darica_hizmet_hesapla, tesis_bilgisi_sorgula
 
+# --- Sayfa Yapılandırması ---
 st.set_page_config(
     page_title="Darıca Belediyesi Akıllı Vatandaş Asistanı",
     page_icon="🏛️",
     layout="wide"
 )
 
+# --- Özel Stil (CSS) ---
 st.markdown("""
     <style>
     .main-title { font-size: 2.2rem; color: #1E3A8A; font-weight: 700; }
@@ -28,6 +30,17 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# --- Ön Bellek Yardımcı Fonksiyonları ---
+@st.cache_data
+def get_cjk_token_ids(_tokenizer):
+    """Çince ve Doğu Asya karakterlerine ait token ID'lerini önbelleğe alır (Performans İyileştirmesi)."""
+    cjk_ids = []
+    for token, token_id in _tokenizer.get_vocab().items():
+        if re.search(r'[\u3400-\u4dbf\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]', token):
+            cjk_ids.append(token_id)
+    return cjk_ids
+
+# --- Yan Menü (Sidebar) ---
 with st.sidebar:
     st.title("🏛️ Darıca-Asistan")
     st.markdown("**Geliştirici:** Anıl Yılmaz")
@@ -51,6 +64,7 @@ with st.sidebar:
 
 st.markdown('<p class="main-title">🏛️ Darıca Belediyesi Akıllı Vatandaş Asistanı</p>', unsafe_allow_html=True)
 
+# --- Model ve Rehber Yükleme ---
 @st.cache_resource
 def kaynaklari_yukle():
     pdf_text = ""
@@ -82,6 +96,7 @@ def kaynaklari_yukle():
 with st.spinner("Model ve hizmet rehberi yükleniyor..."):
     tokenizer, model, rehber_metni = kaynaklari_yukle()
 
+# --- Sohbet Geçmişi ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "Merhaba Sayın Vatandaşımız! Darıca Belediyesi hizmetleri, tesislerimiz, çalışma saatleri veya başvuru ücretleri hakkında size nasıl yardımcı olabilirim?"}
@@ -91,6 +106,7 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
+# --- Kullanıcı Sorgusu İşleme ---
 if prompt := st.chat_input("Sorunuzu yazınız..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -138,12 +154,16 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
 
         # 3. Aşama: RAG ve LLM Üretimi (Çince/Halüsinasyon Korumalı & Kararlı RAG)
         else:
+            FALLBACK = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
+
             messages = [
                 {
                     "role": "system",
                     "content": (
                         "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın. "
-                        "Aşağıda verilen rehberdeki bilgilere dayanarak vatandaşın sorusunu kısa, net ve kurumsal bir Türkçe ile yanıtla."
+                        "Aşağıda verilen rehberdeki bilgilere dayanarak vatandaşın sorusunu "
+                        "kısa, net ve kurumsal bir Türkçe ile yanıtla. "
+                        "Sadece Türkçe yaz. Rehberde olmayan bilgiyi uydurma."
                     )
                 },
                 {
@@ -151,44 +171,62 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                     "content": f"[REHBER BİLGİSİ]\n{rehber_metni}\n\n[SORU]\n{prompt}"
                 }
             ]
-            
-            prompt_str = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            
+
+            prompt_str = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+
             inputs = tokenizer(
-                prompt_str, 
-                return_tensors="pt", 
-                truncation=True, 
+                prompt_str,
+                return_tensors="pt",
+                truncation=True,
                 max_length=2048
             ).to(model.device)
-            
+
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=150,             
-                    repetition_penalty=1.15,        
-                    do_sample=False,               
-                    temperature=0.01,
+                    max_new_tokens=150,
+                    do_sample=False,
+                    repetition_penalty=1.03,                        # Kararlılık için düşürüldü
+                    suppress_tokens=get_cjk_token_ids(tokenizer),  # Çince/Asya token'ları üretim seviyesinde yasaklandı
                     pad_token_id=tokenizer.eos_token_id
                 )
-            
+
             input_length = inputs["input_ids"].shape[1]
             cevap = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
-            
-            cevap = re.sub(r'^(darıca[n]?\s*belediye[siktmnozâa-z]*\s*[\w\s\.\']*(asistanı[ymız]*|oldum)[\.\,\!]?\s*)', '', cevap, flags=re.IGNORECASE).strip()
-            if "Bilmediğiniz" in cevap:
-                cevap = cevap.split("Bilmediğiniz")[0].strip()
-            if "kullanabilirim" in cevap:
-                cevap = cevap.split("kullanabilirim")[0].strip()
-            cevap = cevap.replace("kapatdığınızda", "kapattığınızda")
 
-            has_chinese = bool(re.search(r'[\u4e00-\u9fff]', cevap))
-            
+            # --- METİN TEMİZLEME VE KURTARMA ---
+            # 1. Çince karakterleri ve süslü parantezleri sil
+            cevap = re.sub(r'[\u3400-\u4dbf\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]+', '', cevap)
+            cevap = re.sub(r'[{}]', '', cevap)
+
+            # 2. Girişteki ezber kalıpları ve sızıntıları sil
+            cevap = re.sub(
+                r'^(darıca[n]?\s*belediye[siktmnozâa-z]*\s*[\w\s\.\']*(asistanı[ymız]*|oldum)[\.\,\!]?\s*)',
+                '', cevap, flags=re.IGNORECASE
+            ).strip()
+
+            # 3. Gereksiz kuyruk cümlelerini kes
+            for kesici in ("Bilmediğiniz", "kullanabilirim"):
+                if kesici in cevap:
+                    cevap = cevap.split(kesici)[0].strip()
+
+            cevap = cevap.replace("kapatdığınızda", "kapattığınızda")
+            cevap = re.sub(r'\s{2,}', ' ', cevap).strip()
+
+            # 4. Cümle yarım kaldıysa son tam noktaya kadar kes
+            if cevap and cevap[-1] not in ".!?":
+                son = max(cevap.rfind("."), cevap.rfind("!"), cevap.rfind("?"))
+                if son > 20:
+                    cevap = cevap[:son + 1]
+
+            # --- KALİTE KONTROL VE FALLBACK ---
+            bad_words = ["tesis_adi", "almaq", "etməyinizdir", "beled-i mahsusa"]
             p_check = cevap.lower()
-            bad_words = ["darıcakent", "bilmediğin için", "uygolamasını kullan", "tesis_adi", "beled-i mahsusa", "almaq", "etməyinizdir"]
-            
-            if has_chinese or cevap.startswith("{") or "{" in cevap or "}" in cevap or any(bad in p_check for bad in bad_words) or len(cevap) < 5:
-                cevap = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
-                
+            if len(cevap) < 10 or any(bad in p_check for bad in bad_words):
+                cevap = FALLBACK
+
             if cevap.isupper():
                 cevap = cevap.capitalize()
 
