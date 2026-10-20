@@ -173,119 +173,127 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
 
     with st.chat_message("assistant"):
         p_lower = prompt.lower()
-        yas_match = re.search(r'(\d+)\s*(yaş|yaşında)', p_lower)
-        yas = int(yas_match.group(1)) if yas_match else 0
         
-        tesis_anahtarlari = [
-            "havuz", "yüzme", "kütüphane", "tenis", "buz pateni", 
-            "fitness", "paten", "bakımevi", "barınak", "etüt", "salon", "kültür merkezi"
-        ]
-        is_tesis_sorgusu = any(k in p_lower for k in tesis_anahtarlari)
-
-        # 1. Aşama: Tarife, İndirim ve Hesaplama Ajanı
-        is_hesaplama_sorgusu = any(kw in p_lower for kw in ["hesapla", "indirim", "atık yağ", "deterjan", "karavan", "otopark"]) or (
-            any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl"]) and 
-            any(h in p_lower for h in ["nikah", "otopark", "karavan", "su", "atık"])
-        )
-
-        if not is_tesis_sorgusu and (is_hesaplama_sorgusu or yas > 0):
-            hizmet_tipi = "genel"
-            if "nikah" in p_lower:
-                hizmet_tipi = "nikah"
-            elif "otopark" in p_lower or "karavan" in p_lower:
-                hizmet_tipi = "otopark"
-            elif "atık" in p_lower or "yağ" in p_lower or "deterjan" in p_lower:
-                hizmet_tipi = "atık"
-            elif re.search(r'\bsu(yu|yun|ya|da|dan)?\b', p_lower):
-                hizmet_tipi = "su"
-            elif "spor" in p_lower:
-                hizmet_tipi = "spor"
-            
-            st.markdown(f'<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: darica_hizmet_hesapla]</b> (Hizmet: {hizmet_tipi})</div>', unsafe_allow_html=True)
-            hesaplanan = darica_hizmet_hesapla(hizmet_tipi=hizmet_tipi, parametre=prompt, yas=yas)
-            cevap = f"Darıca Belediyesi güncel tarifelerine göre:\n\n**{hesaplanan}**"
-            
+        # 0. Aşama: Kapsam Dışı / Başka Belediye Güvenlik Kontrolü
+        baska_kurumlar = ["kadıköy", "kadikoy", "üsküdar", "izmit", "gebze", "istanbul büyükşehir", "ankara"]
+        if any(kurum in p_lower for kurum in baska_kurumlar):
+            cevap = "Ben yalnızca Darıca Belediyesi hizmetleri için özelleştirilmiş bir AI asistanıyım. Başka belediyeler veya farklı kurumlar hakkında bilgi verememekteyim. Darıca Belediyesi ile ilgili sorularınızı memnuniyetle yanıtlayabilirim."
             st.markdown(cevap)
             st.session_state.messages.append({"role": "assistant", "content": cevap})
-
-        # 2. Aşama: Tesis Bilgisi ve Çalışma Saatleri Sorgulama Ajanı (CSV Sorgusu)
-        elif is_tesis_sorgusu or any(kw in p_lower for kw in ["çalışma saati", "saat kaç", "kaça kadar", "açılış saati", "kapanış saati", "hangi gün kapalı"]):
-            st.markdown('<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: tesis_bilgisi_sorgula]</b></div>', unsafe_allow_html=True)
-            hesaplanan = tesis_bilgisi_sorgula(prompt)
-            cevap = f"Darıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
             
-            st.markdown(cevap)
-            st.session_state.messages.append({"role": "assistant", "content": cevap})
-
-        # 3. Aşama: RAG ve LLM Üretimi (Mini-Retriever Destekli Nokta Atışı RAG)
         else:
-            FALLBACK = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
-            ilgili_baglam = en_ilgili_paragrafi_bul(rehber_metni, prompt)
-
-            messages = [
-                {
-                    "role": "system",
-                    "content": (
-                        "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın. "
-                        "Aşağıda verilen [REHBER BİLGİSİ] içindeki verilere dayanarak vatandaşın sorusunu "
-                        "kısa, net ve resmi bir Türkçe ile yanıtla.\n\n"
-                        "KURALLAR:\n"
-                        "1. Sadece verilen bilgileri kullan, bilgi dışı kural veya rakam uydurma.\n"
-                        "2. Cevap rehberde yoksa 'Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz.' de.\n"
-                        "3. Türkçe dışında dil kullanma."
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": f"[REHBER BİLGİSİ]:\n{ilgili_baglam}\n\n[SORU]: {prompt}"
-                }
+            yas_match = re.search(r'(\d+)\s*(yaş|yaşında)', p_lower)
+            yas = int(yas_match.group(1)) if yas_match else 0
+            
+            tesis_anahtarlari = [
+                "havuz", "yüzme", "kütüphane", "tenis", "buz pateni", 
+                "fitness", "paten", "bakımevi", "barınak", "etüt", "salon", "kültür merkezi"
             ]
+            is_tesis_sorgusu = any(k in p_lower for k in tesis_anahtarlari)
 
-            prompt_str = tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
+            # 1. Aşama: Tarife, İndirim ve Hesaplama Ajanı
+            is_hesaplama_sorgusu = any(kw in p_lower for kw in ["hesapla", "indirim", "atık yağ", "deterjan", "karavan", "otopark"]) or (
+                any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl"]) and 
+                any(h in p_lower for h in ["nikah", "otopark", "karavan", "su", "atık"])
             )
 
-            inputs = tokenizer(
-                prompt_str,
-                return_tensors="pt",
-                truncation=True,
-                max_length=2048
-            ).to(model.device)
+            if not is_tesis_sorgusu and (is_hesaplama_sorgusu or yas > 0):
+                hizmet_tipi = "genel"
+                if "nikah" in p_lower:
+                    hizmet_tipi = "nikah"
+                elif "otopark" in p_lower or "karavan" in p_lower:
+                    hizmet_tipi = "otopark"
+                elif "atık" in p_lower or "yağ" in p_lower or "deterjan" in p_lower:
+                    hizmet_tipi = "atık"
+                elif re.search(r'\bsu(yu|yun|ya|da|dan)?\b', p_lower):
+                    hizmet_tipi = "su"
+                elif "spor" in p_lower:
+                    hizmet_tipi = "spor"
+                
+                st.markdown(f'<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: darica_hizmet_hesapla]</b> (Hizmet: {hizmet_tipi})</div>', unsafe_allow_html=True)
+                hesaplanan = darica_hizmet_hesapla(hizmet_tipi=hizmet_tipi, parametre=prompt, yas=yas)
+                cevap = f"Darıca Belediyesi güncel tarifelerine göre:\n\n**{hesaplanan}**"
+                
+                st.markdown(cevap)
+                st.session_state.messages.append({"role": "assistant", "content": cevap})
 
-            with torch.no_grad():
-                outputs = model.generate(
-                    **inputs,
-                    max_new_tokens=250,
-                    do_sample=True,
-                    temperature=0.2,
-                    top_p=0.9,
-                    repetition_penalty=1.15,
-                    suppress_tokens=get_cjk_token_ids(tokenizer),
-                    pad_token_id=tokenizer.eos_token_id
+            # 2. Aşama: Tesis Bilgisi ve Çalışma Saatleri Sorgulama Ajanı (CSV Sorgusu)
+            elif is_tesis_sorgusu or any(kw in p_lower for kw in ["çalışma saati", "saat kaç", "kaça kadar", "açılış saati", "kapanış saati", "hangi gün kapalı"]):
+                st.markdown('<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: tesis_bilgisi_sorgula]</b></div>', unsafe_allow_html=True)
+                hesaplanan = tesis_bilgisi_sorgula(prompt)
+                cevap = f"Darıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
+                
+                st.markdown(cevap)
+                st.session_state.messages.append({"role": "assistant", "content": cevap})
+
+            # 3. Aşama: RAG ve LLM Üretimi
+            else:
+                FALLBACK = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
+                ilgili_baglam = en_ilgili_paragrafi_bul(rehber_metni, prompt)
+
+                messages = [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın. "
+                            "Aşağıda verilen [REHBER BİLGİSİ] içindeki verilere dayanarak vatandaşın sorusunu "
+                            "kısa, net ve resmi bir Türkçe ile yanıtla.\n\n"
+                            "KURALLAR:\n"
+                            "1. Sadece verilen bilgileri kullan, bilgi dışı kural veya rakam uydurma.\n"
+                            "2. Cevap rehberde yoksa 'Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz.' de.\n"
+                            "3. Türkçe dışında dil kullanma.\n"
+                            "4. Yalnızca Darıca Belediyesi hizmetleri ile ilgili soruları yanıtla. Başka belediye veya alakasız sorularda bilgi veremeyeceğini belirt.\n"
+                            "5. Kullanıcıya YALNIZCA doğal metin olarak yanıt dön. 'dusunce', 'harcama' veya JSON biçimli ham verileri ekrana yazma."
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": f"[REHBER BİLGİSİ]:\n{ilgili_baglam}\n\n[SORU]: {prompt}"
+                    }
+                ]
+
+                prompt_str = tokenizer.apply_chat_template(
+                    messages, tokenize=False, add_generation_prompt=True
                 )
 
-            input_length = inputs["input_ids"].shape[1]
-            cevap = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
+                inputs = tokenizer(
+                    prompt_str,
+                    return_tensors="pt",
+                    truncation=True,
+                    max_length=2048
+                ).to(model.device)
 
-            # --- METİN TEMİZLEME VE SÜZGEÇ ---
-            cevap = re.sub(r'[\u3400-\u4dbf\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]+', '', cevap)
-            cevap = re.sub(r'[{}]', '', cevap)
-            cevap = cevap.replace("kapatdığınızda", "kapattığınızda")
+                with torch.no_grad():
+                    outputs = model.generate(
+                        **inputs,
+                        max_new_tokens=250,
+                        do_sample=True,
+                        temperature=0.2,
+                        top_p=0.9,
+                        repetition_penalty=1.15,
+                        suppress_tokens=get_cjk_token_ids(tokenizer),
+                        pad_token_id=tokenizer.eos_token_id
+                    )
 
-            # Fazla boşlukları düzelt
-            cevap = re.sub(r'\s{2,}', ' ', cevap).strip()
+                input_length = inputs["input_ids"].shape[1]
+                cevap = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
 
-            # Cümle tamamlama ve noktalama düzeltmesi
-            if cevap and cevap[-1] not in ".!?":
-                son_nokta = max(cevap.rfind("."), cevap.rfind("!"), cevap.rfind("?"))
-                if son_nokta > 20:
-                    cevap = cevap[:son_nokta + 1]
-                else:
-                    cevap += "."
+                # --- METİN TEMİZLEME VE SÜZGEÇ ---
+                cevap = re.sub(r'[\u3400-\u4dbf\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]+', '', cevap)
+                cevap = re.sub(r'[{}]', '', cevap)
+                cevap = cevap.replace("kapatdığınızda", "kapattığınızda")
+                cevap = re.sub(r'\s{2,}', ' ', cevap).strip()
 
-            bad_words = ["tesis_adi", "almaq", "etməyinizdir", "beled-i mahsusa"]
-            if len(cevap) < 8 or any(bad in cevap.lower() for bad in bad_words):
-                cevap = FALLBACK
+                if cevap and cevap[-1] not in ".!?":
+                    son_nokta = max(cevap.rfind("."), cevap.rfind("!"), cevap.rfind("?"))
+                    if son_nokta > 20:
+                        cevap = cevap[:son_nokta + 1]
+                    else:
+                        cevap += "."
 
-            st.markdown(cevap)
-            st.session_state.messages.append({"role": "assistant", "content": cevap})
+                bad_words = ["tesis_adi", "almaq", "etməyinizdir", "beled-i mahsusa"]
+                if len(cevap) < 8 or any(bad in cevap.lower() for bad in bad_words):
+                    cevap = FALLBACK
+
+                st.markdown(cevap)
+                st.session_state.messages.append({"role": "assistant", "content": cevap})
