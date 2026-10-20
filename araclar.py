@@ -18,7 +18,6 @@ def darica_hizmet_hesapla(hizmet_tipi: str, parametre: str = "", yas: int = 0) -
 
     # Nikah hizmetleri ve salon tarifeleri
     if "nikah" in hizmet:
-        # Dış mekan/otel önceliği hafta sonuna göre önceliklidir
         if any(k in p_lower for k in ["dış", "otel", "bahçe", "düğün"]):
             return "Belediye salonları dışındaki mekânlarda (otel, bahçe, düğün salonu vb.) nikah kıyma ücreti 4.500 TL'dir."
         elif "hafta sonu" in p_lower:
@@ -42,7 +41,6 @@ def darica_hizmet_hesapla(hizmet_tipi: str, parametre: str = "", yas: int = 0) -
 
     # Spor tesisleri, kültür merkezleri ve salon kiralamaları
     elif any(k in hizmet for k in ["spor", "tesis", "kültür"]) or "salon" in p_lower:
-        # Kültür merkezi / salon kiralama kontrolü (Spor salonu aramaları hariç)
         is_kultur_veya_kiralama = (
             ("kültür" in hizmet or "kültür" in p_lower or "kiralama" in p_lower)
             or ("salon" in p_lower and "spor" not in p_lower and "spor" not in hizmet)
@@ -56,7 +54,6 @@ def darica_hizmet_hesapla(hizmet_tipi: str, parametre: str = "", yas: int = 0) -
             else:
                 return "Darıca Kültür Merkezi büyük salon (1200 kişilik) yarım günlük kiralama ücreti 2.800 TL, küçük salon (400 kişilik) ise 800 TL'dir. Dernek ve okullara %70 indirim yapılır."
         else:
-            # Spor tesisleri ve yaş / öğrenci indirimi
             if yas >= 65:
                 return f"Vatandaşımız {yas} yaşında olduğu için spor tesislerinde %50 Kıdemli Vatandaş indirimi uygulanır."
             elif "öğrenci" in p_lower:
@@ -165,5 +162,3 @@ def tesis_bilgisi_sorgula(sorgu: str, csv_path: str = "tesisler.csv") -> str:
 
     except Exception as e:
         return f"Tesis bilgileri sorgulanırken bir hata oluştu: {str(e)}"
-
-    #test
