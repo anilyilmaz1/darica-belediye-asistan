@@ -7,14 +7,14 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 from araclar import darica_hizmet_hesapla, tesis_bilgisi_sorgula
 
-# --- Sayfa Yapılandırması ---
+# Sayfa Yapılandırması
 st.set_page_config(
     page_title="Darıca Belediyesi Akıllı Vatandaş Asistanı",
     page_icon="🏛️",
     layout="wide"
 )
 
-# --- Özel Stil (CSS) ---
+# CSS
 st.markdown("""
     <style>
     .main-title { font-size: 2.2rem; color: #1E3A8A; font-weight: 700; }
@@ -30,7 +30,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- Ön Bellek Yardımcı Fonksiyonları ---
+# Ön Bellek Yardımcı Fonksiyonları
 @st.cache_data
 def get_cjk_token_ids(_tokenizer):
     """Çince ve Doğu Asya karakterlerine ait token ID'lerini önbelleğe alır."""
@@ -40,7 +40,7 @@ def get_cjk_token_ids(_tokenizer):
             cjk_ids.append(token_id)
     return cjk_ids
 
-# --- Yan Menü (Sidebar) ---
+# Sidebar
 with st.sidebar:
     st.title("🏛️ Darıca-Asistan")
     st.markdown("**Geliştirici:** Anıl Yılmaz")
@@ -64,13 +64,13 @@ with st.sidebar:
 
 st.markdown('<p class="main-title">🏛️ Darıca Belediyesi Akıllı Vatandaş Asistanı</p>', unsafe_allow_html=True)
 
-# --- Model ve Rehber Yükleme ---
+# Model ve Rehber Yükleme
 @st.cache_resource
 def kaynaklari_yukle():
     pdf_text = ""
     if os.path.exists("rehber.pdf"):
         try:
-            # strict=False parametresi bozuk PDF stream hatalarını yok sayar
+            # strict=False parametresi ile bozuk PDF stream hatalarını yok saydık
             reader = pypdf.PdfReader("rehber.pdf", strict=False)
             for page in reader.pages:
                 try:
@@ -78,7 +78,7 @@ def kaynaklari_yukle():
                     if extracted:
                         pdf_text += extracted + "\n\n"
                 except Exception:
-                    continue  # Hatalı sayfayı atlayıp diğerlerine devam et
+                    continue  # Hatalı sayfayı atlayıp diğerlerine devam eder
         except Exception as e:
             st.error(f"PDF okunurken hata oluştu: {e}")
             
@@ -145,7 +145,7 @@ def en_ilgili_paragrafi_bul(rehber_metni: str, soru: str) -> str:
     skorlu_paragraflar.sort(key=lambda x: x[0], reverse=True)
     
     if skorlu_paragraflar:
-        # En yüksek skorlu ilk 2 paragrafı birleştir
+        # En yüksek skorlu ilk 2 paragrafı birleştirir
         en_iyi = [p[1] for p in skorlu_paragraflar[:2]]
         return "\n\n".join(en_iyi)
     
@@ -155,7 +155,7 @@ def en_ilgili_paragrafi_bul(rehber_metni: str, soru: str) -> str:
 with st.spinner("Model ve hizmet rehberi yükleniyor..."):
     tokenizer, model, rehber_metni = kaynaklari_yukle()
 
-# --- Sohbet Geçmişi ---
+# Sohbet Geçmişi
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "Merhaba Sayın Vatandaşımız! Darıca Belediyesi hizmetleri, tesislerimiz, çalışma saatleri veya başvuru ücretleri hakkında size nasıl yardımcı olabilirim?"}
@@ -165,7 +165,7 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# --- Kullanıcı Sorgusu İşleme ---
+# Kullanıcı Sorgusu İşleme
 if prompt := st.chat_input("Sorunuzu yazınız..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -174,7 +174,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
     with st.chat_message("assistant"):
         p_lower = prompt.lower()
         
-        # 0. Aşama: Kapsam Dışı / Başka Belediye Güvenlik Kontrolü
+        # 1. Aşama: Kapsam Dışı / Başka Belediye Güvenlik Kontrolü
         baska_kurumlar = ["kadıköy", "kadikoy", "üsküdar", "izmit", "gebze", "istanbul büyükşehir", "ankara"]
         if any(kurum in p_lower for kurum in baska_kurumlar):
             cevap = "Ben yalnızca Darıca Belediyesi hizmetleri için özelleştirilmiş bir AI asistanıyım. Başka belediyeler veya farklı kurumlar hakkında bilgi verememekteyim. Darıca Belediyesi ile ilgili sorularınızı memnuniyetle yanıtlayabilirim."
@@ -191,7 +191,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             ]
             is_tesis_sorgusu = any(k in p_lower for k in tesis_anahtarlari)
 
-            # 1. Aşama: Tarife, İndirim ve Hesaplama Ajanı
+            # 2. Aşama: Tarife, İndirim ve Hesaplama Ajanı
             is_hesaplama_sorgusu = any(kw in p_lower for kw in ["hesapla", "indirim", "atık yağ", "deterjan", "karavan", "otopark"]) or (
                 any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl"]) and 
                 any(h in p_lower for h in ["nikah", "otopark", "karavan", "su", "atık"])
@@ -217,7 +217,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                 st.markdown(cevap)
                 st.session_state.messages.append({"role": "assistant", "content": cevap})
 
-            # 2. Aşama: Tesis Bilgisi ve Çalışma Saatleri Sorgulama Ajanı (CSV Sorgusu)
+            # 3. Aşama: Tesis Bilgisi ve Çalışma Saatleri Sorgulama Ajanı (CSV Sorgusu)
             elif is_tesis_sorgusu or any(kw in p_lower for kw in ["çalışma saati", "saat kaç", "kaça kadar", "açılış saati", "kapanış saati", "hangi gün kapalı"]):
                 st.markdown('<div class="tool-box">🛠️ <b>[Ajan Tetiklendi: tesis_bilgisi_sorgula]</b></div>', unsafe_allow_html=True)
                 hesaplanan = tesis_bilgisi_sorgula(prompt)
@@ -226,7 +226,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                 st.markdown(cevap)
                 st.session_state.messages.append({"role": "assistant", "content": cevap})
 
-            # 3. Aşama: RAG ve LLM Üretimi
+            # 4. Aşama: RAG ve LLM Üretimi
             else:
                 FALLBACK = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
                 ilgili_baglam = en_ilgili_paragrafi_bul(rehber_metni, prompt)
@@ -278,7 +278,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                 input_length = inputs["input_ids"].shape[1]
                 cevap = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
 
-                # --- METİN TEMİZLEME VE SÜZGEÇ ---
+                # METİN TEMİZLEME VE SÜZGEÇ
                 cevap = re.sub(r'[\u3400-\u4dbf\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]+', '', cevap)
                 cevap = re.sub(r'[{}]', '', cevap)
                 cevap = cevap.replace("kapatdığınızda", "kapattığınızda")
