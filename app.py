@@ -49,7 +49,7 @@ with st.sidebar:
     
     st.subheader("💡 Deneyebileceğiniz Sorular")
     st.caption("• Sahil Spor Salonu kaça kadar açık?")
-    st.caption("• Yüzme havuzu hangi gün kapalı ve ücreti ne kadar?")
+    st.caption("• Bayramoğlu'ndaki Kent Müzesi'ni ziyaret etmek istiyorum, hangi gün kapalı?")
     st.caption("• Hafta sonu nikah kıydırma ücreti ne kadar?")
     st.caption("• 70 yaşındaki biri spor tesisinden indirimli faydalanabilir mi?")
     st.caption("• 5 litre atık yağ getirince ne veriliyor?")
