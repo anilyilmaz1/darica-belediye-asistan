@@ -6,6 +6,7 @@ import streamlit as st
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 from araclar import darica_hizmet_hesapla, tesis_bilgisi_sorgula
+from weather import get_darica_weather
 
 # Sayfa Yapılandırması
 st.set_page_config(
@@ -13,6 +14,30 @@ st.set_page_config(
     page_icon="🏛️",
     layout="wide"
 )
+
+weather = get_darica_weather()
+
+if weather:
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric(
+            label="Darıca Sıcaklık", 
+            value=f"{weather['icon']} {weather['temp']} °C", 
+            delta=weather['desc']
+        )
+    with col2:
+        st.metric(
+            label="Rüzgar Hızı", 
+            value=f"{weather['wind']} km/h"
+        )
+    with col3:
+        st.metric(
+            label="Konum / Durum", 
+            value="Darıca / Kocaeli", 
+            delta="Canlı Veri"
+        )
+
+st.markdown("---") 
 
 # CSS
 st.markdown("""
