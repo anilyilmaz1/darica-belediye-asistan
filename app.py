@@ -1,10 +1,8 @@
 import os
 import re
 import pypdf
-import torch
 import streamlit as st
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from peft import PeftModel
+from groq import Groq
 from araclar import darica_hizmet_hesapla, tesis_bilgisi_sorgula
 from weather import get_darica_weather
 
@@ -15,6 +13,7 @@ st.set_page_config(
     layout="wide"
 )
 
+# Canlı Hava Durumu Gösterimi
 weather = get_darica_weather()
 
 if weather:
@@ -55,21 +54,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Ön Bellek Yardımcı Fonksiyonları
-@st.cache_data
-def get_cjk_token_ids(_tokenizer):
-    """Çince ve Doğu Asya karakterlerine ait token ID'lerini önbelleğe alır."""
-    cjk_ids = []
-    for token, token_id in _tokenizer.get_vocab().items():
-        if re.search(r'[\u3400-\u4dbf\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]', token):
-            cjk_ids.append(token_id)
-    return cjk_ids
-
 # Sidebar
 with st.sidebar:
     st.title("🏛️ Darıca-Asistan")
     st.markdown("**Geliştirici:** Anıl Yılmaz")
-    st.markdown("**Sürüm:** QLoRA + RAG + Multi-Agent Tooling")
+    st.markdown("**Sürüm:** Groq Llama-3.1 + RAG + Multi-Agent Tooling")
     st.divider()
     
     st.subheader("💡 Deneyebileceğiniz Sorular")
@@ -89,13 +78,12 @@ with st.sidebar:
 
 st.markdown('<p class="main-title">🏛️ Darıca Belediyesi Akıllı Vatandaş Asistanı</p>', unsafe_allow_html=True)
 
-# Model ve Rehber Yükleme
+# Hizmet Rehberi ve Groq İstemcisi Yükleme
 @st.cache_resource
 def kaynaklari_yukle():
     pdf_text = ""
     if os.path.exists("rehber.pdf"):
         try:
-            # strict=False parametresi ile bozuk PDF stream hatalarını yok saydık
             reader = pypdf.PdfReader("rehber.pdf", strict=False)
             for page in reader.pages:
                 try:
@@ -103,30 +91,17 @@ def kaynaklari_yukle():
                     if extracted:
                         pdf_text += extracted + "\n\n"
                 except Exception:
-                    continue  # Hatalı sayfayı atlayıp diğerlerine devam eder
+                    continue
         except Exception as e:
             st.error(f"PDF okunurken hata oluştu: {e}")
             
     pdf_text = pdf_text.replace("Martıkent", "Darıca").replace("Martıkent Cebimde", "Darıca Belediyesi Mobil Uygulaması")
         
-    repo_id = "Anil-yilmaz/Darica-Belediye-3B"
-    base_id = "Qwen/Qwen2.5-3B-Instruct"
+    # Groq API istemcisi
+    api_key = os.environ.get("GROQ_API_KEY")
+    groq_client = Groq(api_key=api_key) if api_key else None
     
-    tokenizer = AutoTokenizer.from_pretrained(repo_id, trust_remote_code=True)
-    
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-    
-    base_model = AutoModelForCausalLM.from_pretrained(
-        base_id,
-        torch_dtype=dtype,
-        device_map="auto" if torch.cuda.is_available() else None,
-        trust_remote_code=True
-    )
-    model = PeftModel.from_pretrained(base_model, repo_id)
-    model.eval()
-    
-    return tokenizer, model, pdf_text
+    return groq_client, pdf_text
 
 
 def en_ilgili_paragrafi_bul(rehber_metni: str, soru: str) -> str:
@@ -170,15 +145,14 @@ def en_ilgili_paragrafi_bul(rehber_metni: str, soru: str) -> str:
     skorlu_paragraflar.sort(key=lambda x: x[0], reverse=True)
     
     if skorlu_paragraflar:
-        # En yüksek skorlu ilk 2 paragrafı birleştirir
         en_iyi = [p[1] for p in skorlu_paragraflar[:2]]
         return "\n\n".join(en_iyi)
     
     return "\n\n".join(paragraflar[:2])
 
 
-with st.spinner("Model ve hizmet rehberi yükleniyor..."):
-    tokenizer, model, rehber_metni = kaynaklari_yukle()
+with st.spinner("Hizmet rehberi ve servisler yükleniyor..."):
+    groq_client, rehber_metni = kaynaklari_yukle()
 
 # Sohbet Geçmişi
 if "messages" not in st.session_state:
@@ -251,74 +225,44 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                 st.markdown(cevap)
                 st.session_state.messages.append({"role": "assistant", "content": cevap})
 
-            # 4. Aşama: RAG ve LLM Üretimi
+            # 4. Aşama: RAG ve Groq LLM Üretimi
             else:
-                FALLBACK = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımızı arayabilirsiniz."
+                FALLBACK = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz."
                 ilgili_baglam = en_ilgili_paragrafi_bul(rehber_metni, prompt)
 
-                messages = [
-                    {
-                        "role": "system",
-                        "content": (
-                            "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın. "
-                            "Aşağıda verilen [REHBER BİLGİSİ] içindeki verilere dayanarak vatandaşın sorusunu "
-                            "kısa, net ve resmi bir Türkçe ile yanıtla.\n\n"
-                            "KURALLAR:\n"
-                            "1. Sadece verilen bilgileri kullan, bilgi dışı kural veya rakam uydurma.\n"
-                            "2. Cevap rehberde yoksa 'Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz.' de.\n"
-                            "3. Türkçe dışında dil kullanma.\n"
-                            "4. Yalnızca Darıca Belediyesi hizmetleri ile ilgili soruları yanıtla. Başka belediye veya alakasız sorularda bilgi veremeyeceğini belirt.\n"
-                            "5. Kullanıcıya YALNIZCA doğal metin olarak yanıt dön. 'dusunce', 'harcama' veya JSON biçimli ham verileri ekrana yazma."
-                        )
-                    },
-                    {
-                        "role": "user",
-                        "content": f"[REHBER BİLGİSİ]:\n{ilgili_baglam}\n\n[SORU]: {prompt}"
-                    }
-                ]
-
-                prompt_str = tokenizer.apply_chat_template(
-                    messages, tokenize=False, add_generation_prompt=True
-                )
-
-                inputs = tokenizer(
-                    prompt_str,
-                    return_tensors="pt",
-                    truncation=True,
-                    max_length=2048
-                ).to(model.device)
-
-                with torch.no_grad():
-                    outputs = model.generate(
-                        **inputs,
-                        max_new_tokens=250,
-                        do_sample=True,
-                        temperature=0.2,
-                        top_p=0.9,
-                        repetition_penalty=1.15,
-                        suppress_tokens=get_cjk_token_ids(tokenizer),
-                        pad_token_id=tokenizer.eos_token_id
+                if not groq_client:
+                    cevap = "⚠️ Sistem şu anda yanıt üretemiyor (Groq API anahtarı ayarlanmamış)."
+                else:
+                    system_prompt = (
+                        "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın. "
+                        "Aşağıda verilen [REHBER BİLGİSİ] içindeki verilere dayanarak vatandaşın sorusunu "
+                        "kısa, net ve resmi bir Türkçe ile yanıtla.\n\n"
+                        "KURALLAR:\n"
+                        "1. Sadece verilen bilgileri kullan, bilgi dışı kural veya rakam uydurma.\n"
+                        "2. Cevap rehberde yoksa 'Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz.' de.\n"
+                        "3. Türkçe dışında dil kullanma.\n"
+                        "4. Yalnızca Darıca Belediyesi hizmetleri ile ilgili soruları yanıtla. Başka belediye veya alakasız sorularda bilgi veremeyeceğini belirt.\n"
+                        "5. Kullanıcıya YALNIZCA doğal metin olarak yanıt dön."
                     )
 
-                input_length = inputs["input_ids"].shape[1]
-                cevap = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
+                    user_content = f"[REHBER BİLGİSİ]:\n{ilgili_baglam}\n\n[SORU]: {prompt}"
 
-                # METİN TEMİZLEME VE SÜZGEÇ
-                cevap = re.sub(r'[\u3400-\u4dbf\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]+', '', cevap)
-                cevap = re.sub(r'[{}]', '', cevap)
-                cevap = cevap.replace("kapatdığınızda", "kapattığınızda")
-                cevap = re.sub(r'\s{2,}', ' ', cevap).strip()
+                    try:
+                        completion = groq_client.chat.completions.create(
+                            model="llama-3.1-8b-instant",
+                            messages=[
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_content}
+                            ],
+                            temperature=0.2,
+                            max_tokens=300
+                        )
+                        cevap = completion.choices[0].message.content.strip()
 
-                if cevap and cevap[-1] not in ".!?":
-                    son_nokta = max(cevap.rfind("."), cevap.rfind("!"), cevap.rfind("?"))
-                    if son_nokta > 20:
-                        cevap = cevap[:son_nokta + 1]
-                    else:
-                        cevap += "."
-
-                bad_words = ["tesis_adi", "almaq", "etməyinizdir", "beled-i mahsusa"]
-                if len(cevap) < 8 or any(bad in cevap.lower() for bad in bad_words):
-                    cevap = FALLBACK
+                        if not cevap or len(cevap) < 8:
+                            cevap = FALLBACK
+                    except Exception as e:
+                        cevap = f"Bir hata oluştu: {str(e)}"
 
                 st.markdown(cevap)
                 st.session_state.messages.append({"role": "assistant", "content": cevap})

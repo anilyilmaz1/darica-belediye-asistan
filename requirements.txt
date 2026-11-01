@@ -1,6 +1,5 @@
 streamlit
-torch
-transformers
-peft
 pypdf
 pandas
+groq
+requests

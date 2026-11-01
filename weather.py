@@ -1,5 +1,7 @@
 import requests
+import streamlit as st
 
+@st.cache_data(ttl=600)
 def get_darica_weather():
     """Darıca/Kocaeli için canlı hava durumu verisi çeker."""
     url = "https://api.open-meteo.com/v1/forecast"
