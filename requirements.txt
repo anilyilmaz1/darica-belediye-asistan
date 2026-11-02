@@ -1,7 +1,7 @@
 streamlit
-pypdf
-pandas
 groq
+pypdf
 requests
 python-dotenv
 duckduckgo-search
+beautifulsoup4

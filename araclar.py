@@ -1,5 +1,8 @@
 import csv
 import os
+import re
+import requests
+from bs4 import BeautifulSoup
 
 
 def darica_hizmet_hesapla(hizmet_tipi: str, parametre: str = "", yas: int = 0) -> str:
@@ -162,3 +165,36 @@ def tesis_bilgisi_sorgula(sorgu: str, csv_path: str = "tesisler.csv") -> str:
 
     except Exception as e:
         return f"Tesis bilgileri sorgulanırken bir hata oluştu: {str(e)}"
+
+
+def darica_son_dakika_haberleri() -> str:
+    """Darıca yerel haber sitesinden en güncel 5 haber başlığını çeker.
+
+    Returns:
+        str: Maddeler halinde yerel haber başlıkları metni.
+    """
+    try:
+        url = "https://www.daricagazetesi.com.tr/"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        response = requests.get(url, headers=headers, timeout=5)
+
+        if response.status_code != 200:
+            return ""
+
+        soup = BeautifulSoup(response.content, "html.parser")
+        haberler = []
+
+        # Sayfadaki haber başlıklarını tarar
+        for item in soup.find_all(["h2", "h3", "a"]):
+            baslik = item.get_text(strip=True)
+            if len(baslik) > 25 and baslik not in haberler:
+                # Alakasız menü yazılarını eleme
+                if not any(x in baslik.lower() for x in ["çerez", "gizlilik", "künye", "iletişim", "tüm hakları"]):
+                    haberler.append(f"• {baslik}")
+            if len(haberler) == 5:
+                break
+
+        return "\n".join(haberler) if haberler else ""
+    except Exception as e:
+        print(f"Haber çekme hatası: {e}")
+        return ""

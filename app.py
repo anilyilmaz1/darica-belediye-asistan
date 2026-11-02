@@ -6,6 +6,7 @@ import streamlit.components.v1 as components
 from groq import Groq
 from araclar import darica_hizmet_hesapla, tesis_bilgisi_sorgula
 from weather import get_darica_weather
+from araclar import darica_hizmet_hesapla, tesis_bilgisi_sorgula, darica_son_dakika_haberleri
 
 # Dotenv güvenli içe aktarma
 try:
