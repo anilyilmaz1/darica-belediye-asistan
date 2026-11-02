@@ -269,10 +269,12 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             else:
                 # Siteden veri çekilemezse yedek olarak Web Search ajanına yönlendirilir
                 web_sonuclari = web_arama_yap(prompt)
-                if web_sonuclari and groq_client:
+                if web_sonuclari and "darıca" in web_sonuclari.lower() and groq_client:
                     system_prompt = (
                         "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n"
-                        "Vatandaşa [CANLI WEB ARAMA SONUÇLARI] içindeki güncel haberleri özetle."
+                        "Aşağıdaki arama sonuçlarından yalnızca Darıca (Kocaeli) ile ilgili güncel haberleri kısaca özetle.\n"
+                        "Darıca ile ilgili haber yoksa uydurma, bunu açıkça söyle.\n"
+                        "Yanıtta 'CANLI WEB ARAMA SONUÇLARI' gibi iç sistem ifadelerini KULLANMA."
                     )
                     user_content = f"[CANLI WEB ARAMA SONUÇLARI]:\n{web_sonuclari}\n\n[SORU]: {prompt}"
                     

@@ -4,6 +4,8 @@ import re
 import requests
 from bs4 import BeautifulSoup
 import feedparser
+import time
+from urllib.parse import quote
 
 
 def darica_hizmet_hesapla(hizmet_tipi: str, parametre: str = "", yas: int = 0) -> str:
@@ -168,28 +170,74 @@ def tesis_bilgisi_sorgula(sorgu: str, csv_path: str = "tesisler.csv") -> str:
         return f"Tesis bilgileri sorgulanırken bir hata oluştu: {str(e)}"
 
 
-def darica_son_dakika_haberleri() -> str:
-    """RSS akışları üzerinden %100 kararlı haber çeker."""
-    # Örnek RSS kaynakları
-    rss_urls = [
-        "https://www.kocaeligazetesi.com.tr/rss",
-        "https://www.ozgurkocaeli.com.tr/rss"
-    ]
-    haberler = []
-    
-    for url in rss_urls:
+_HABER_CACHE = {"zaman": 0.0, "metin": ""}
+_HABER_CACHE_SURE = 600  # saniye (10 dk)
+
+# (adres, başlıkta "Darıca" filtresi uygula mı?)
+_HABER_KAYNAKLARI = [
+    # Google Haberler araması zaten "Darıca" için süzülmüş geliyor
+    ("https://news.google.com/rss/search?q=" + quote("Darıca Kocaeli when:7d")
+     + "&hl=tr&gl=TR&ceid=TR:tr", False),
+    # Yedek yerel gazete RSS'leri (adresleri tarayıcıda açıp doğrula)
+    ("https://www.kocaeligazetesi.com.tr/rss", True),
+    ("https://www.ozgurkocaeli.com.tr/rss", True),
+]
+
+
+def _tr_kucult(metin: str) -> str:
+    return metin.replace("İ", "i").replace("I", "ı").lower()
+
+
+def darica_son_dakika_haberleri(adet: int = 5) -> str:
+    """Darıca ile ilgili son haber başlıklarını RSS'ten çeker (10 dk önbellekli)."""
+    if _HABER_CACHE["metin"] and time.time() - _HABER_CACHE["zaman"] < _HABER_CACHE_SURE:
+        return _HABER_CACHE["metin"]
+
+    haberler, gorulen = [], set()
+
+    for url, filtrele in _HABER_KAYNAKLARI:
         try:
-            feed = feedparser.parse(url)
-            for entry in feed.entries:
-                baslik = entry.title
-                # Darıca ile ilgili başlıkları süzme
-                if "darıca" in baslik.lower() and baslik not in haberler:
-                    haberler.append(f"• {baslik}")
-                if len(haberler) >= 5:
-                    break
-        except Exception:
+            r = requests.get(
+                url, timeout=8,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; DaricaAsistan/1.0)"}
+            )
+            r.raise_for_status()
+            entries = feedparser.parse(r.content).entries
+        except Exception as e:
+            print(f"Haber RSS hatası ({url}): {e}")  # HF Space loglarında görünür
             continue
-        if haberler:
+
+        for entry in entries:
+            baslik = (entry.get("title") or "").strip()
+            link = entry.get("link", "")
+            if not baslik:
+                continue
+
+            norm = _tr_kucult(baslik)
+            if "hava durumu" in norm:
+                continue
+            if filtrele and "darıca" not in norm and "darica" not in norm:
+                continue
+            if norm in gorulen:
+                continue
+            gorulen.add(norm)
+
+            # Google Haberler başlıkları "Başlık - Kaynak" biçiminde gelir
+            kaynak = ""
+            if " - " in baslik:
+                baslik, _, kaynak = baslik.rpartition(" - ")
+
+            satir = f"• [{baslik}]({link})" if link else f"• {baslik}"
+            if kaynak:
+                satir += f" — *{kaynak}*"
+            haberler.append(satir)
+
+            if len(haberler) >= adet:
+                break
+        if len(haberler) >= adet:
             break
-            
-    return "\n".join(haberler) if haberler else ""
+
+    metin = "\n".join(haberler)
+    if metin:  # boş sonucu önbelleğe alma
+        _HABER_CACHE.update(zaman=time.time(), metin=metin)
+    return metin
