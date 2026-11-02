@@ -114,12 +114,16 @@ def kaynaklari_yukle():
 
 
 def web_arama_yap(sorgu: str) -> str:
-    """Canlı İnternet Araması Yapar (Geliştirilmiş & Bölge Destekli)"""
+    """Canlı İnternet Araması Yapar (Geliştirilmiş & Spesifik)"""
     if not DDGS:
         return ""
     try:
         temiz_sorgu = re.sub(r'(neler|nedir|var mı|mu|mı|nelerdir|\?)', '', sorgu, flags=re.IGNORECASE).strip()
-        if "darıca" not in temiz_sorgu.lower():
+        
+        # Metro sorularında Gebze-Darıca vurgusu ekleme
+        if "metro" in temiz_sorgu.lower():
+            temiz_sorgu = "Gebze Darıca metrosu açılış tarihi haberleri"
+        elif "darıca" not in temiz_sorgu.lower():
             temiz_sorgu = f"Darıca {temiz_sorgu}"
             
         with DDGS() as ddgs:
@@ -268,10 +272,10 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                 if web_sonuclari:
                     system_prompt = (
                         "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n"
-                        "Darıca ilçesi, belediye projeleri, metro ve ulaşım hatları, haberler ve etkinlikler senin yetki alanındadır.\n\n"
-                        "KURAL:\n"
-                        "1. Soru Darıca, Darıca metrosu veya belediye ile ilgiliyse [CANLI WEB ARAMA SONUÇLARI] verilerini kullanarak kullanıcıya açık ve net bilgi ver. KESİNLİKLE 'Ben yalnızca Darıca asistanıyım' diyerek reddetme.\n"
-                        "2. YALNIZCA yemek tarifi, genel kültür, oyun, yazılım gibi Darıca/belediye ile HİÇ ilgisi olmayan konularda 'Ben yalnızca Darıca Belediyesi hizmetleri ve Darıca ilçesi ile ilgili konularda yardımcı olan bir yapay zeka asistanıyım.' yanıtını dön."
+                        "ÖNEMLİ KURALLAR:\n"
+                        "1. Darıca'nın Kocaeli iline bağlı olduğunu unutma! İstanbul veya İBB ile alakası yoktur. Ulaşım sorularında Kocaeli Büyükşehir Belediyesi veya Ulaştırma ve Altyapı Bakanlığı'nı referans göster.\n"
+                        "2. Yanıtında '[CANLI WEB ARAMA SONUÇLARI]' veya '[REHBER BİLGİSİ]' gibi iç sistem ifadelerini KESİNLİKLE KULLANMA. Doğrudan vatandaşa hitap eden doğal bir metin yaz.\n"
+                        "3. Arama sonuçlarındaki bilgileri net bir şekilde özetle. Bilgi yoksa Kocaeli Büyükşehir Belediyesi veya Ulaştırma Bakanlığı duyurularına yönlendir."
                     )
                 else:
                     system_prompt = (
