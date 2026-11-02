@@ -5,3 +5,4 @@ requests
 python-dotenv
 duckduckgo-search
 beautifulsoup4
+feedparser

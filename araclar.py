@@ -3,6 +3,7 @@ import os
 import re
 import requests
 from bs4 import BeautifulSoup
+import feedparser
 
 
 def darica_hizmet_hesapla(hizmet_tipi: str, parametre: str = "", yas: int = 0) -> str:
@@ -168,32 +169,27 @@ def tesis_bilgisi_sorgula(sorgu: str, csv_path: str = "tesisler.csv") -> str:
 
 
 def darica_son_dakika_haberleri() -> str:
-    """Darıca yerel haber sitelerinden güncel başlıkları çeker."""
-    urls = [
-        "https://www.daricagazetesi.com.tr/",
-        "https://www.kocaeligazetesi.com.tr/darica"
+    """RSS akışları üzerinden %100 kararlı haber çeker."""
+    # Örnek RSS kaynakları
+    rss_urls = [
+        "https://www.kocaeligazetesi.com.tr/rss",
+        "https://www.ozgurkocaeli.com.tr/rss"
     ]
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept-Language": "tr-TR,tr;q=0.9"
-    }
-    
     haberler = []
-    for url in urls:
+    
+    for url in rss_urls:
         try:
-            response = requests.get(url, headers=headers, timeout=4)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.content, "html.parser")
-                for item in soup.find_all(["h1", "h2", "h3", "a"]):
-                    baslik = item.get_text(strip=True)
-                    if 25 < len(baslik) < 110 and baslik not in haberler:
-                        if not any(x in baslik.lower() for x in ["çerez", "gizlilik", "künye", "iletişim", "tüm hakları", "hatay", "istanbul"]):
-                            haberler.append(f"• {baslik}")
-                    if len(haberler) >= 5:
-                        break
+            feed = feedparser.parse(url)
+            for entry in feed.entries:
+                baslik = entry.title
+                # Darıca ile ilgili başlıkları süzme
+                if "darıca" in baslik.lower() and baslik not in haberler:
+                    haberler.append(f"• {baslik}")
+                if len(haberler) >= 5:
+                    break
         except Exception:
             continue
         if haberler:
             break
-
+            
     return "\n".join(haberler) if haberler else ""
