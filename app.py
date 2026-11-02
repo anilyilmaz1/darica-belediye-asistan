@@ -60,11 +60,6 @@ st.markdown("""
         background-color: #F3F4F6; padding: 10px; border-radius: 6px;
         font-size: 0.78rem; color: #4B5563; border-left: 4px solid #6B7280;
     }
-    .tool-badge {
-        background-color: #FEF3C7; color: #92400E; padding: 6px 12px;
-        border-radius: 6px; font-weight: 600; font-size: 0.85rem;
-        border: 1px solid #FCD34D; margin-bottom: 8px; display: inline-block;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -72,7 +67,7 @@ st.markdown("""
 with st.sidebar:
     st.title("🏛️ Darıca-Asistan")
     st.markdown("**Geliştirici:** Anıl Yılmaz")
-    st.markdown("**Sürüm:** Groq Llama-3.3 + RAG + Multi-Agent + Web Search + Ulaşım Portal")
+    st.markdown("**Sürüm:** Groq Qwen 3.8-27b + RAG + Multi-Agent + Web Search + Ulaşım Portal")
     st.divider()
     
     st.subheader("💡 Deneyebileceğiniz Sorular")
@@ -123,7 +118,6 @@ def web_arama_yap(sorgu: str) -> str:
     if not DDGS:
         return ""
     try:
-        # Soru eklerini temizleme ve 'Darıca' kelimesi tekrarlarını önleme
         temiz_sorgu = re.sub(r'(neler|nedir|var mı|mu|mı|nelerdir|\?)', '', sorgu, flags=re.IGNORECASE).strip()
         if "darıca" not in temiz_sorgu.lower():
             temiz_sorgu = f"Darıca {temiz_sorgu}"
@@ -190,7 +184,6 @@ with tab_asistan:
             {"role": "assistant", "content": "Merhaba Sayın Vatandaşımız! Darıca Belediyesi hizmetleri, tesislerimiz, çalışma saatleri, başvuru ücretleri veya güncel konular hakkında size nasıl yardımcı olabilirim?"}
         ]
 
-    # Mesaj geçmişini render et (Girdi kutusunun üstünde kalır)
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
@@ -259,8 +252,11 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             web_sonuclari = ""
             ajan_etiketi = ""
 
-            # Rehberde eşleşme zayıfsa veya güncel konu sorgulanıyorsa Web Search çalıştır
-            if not ilgili_baglam or any(kw in p_lower for kw in ["haber", "etkinlik", "son dakika", "bugün", "duyuru", "nedir", "son haber"]):
+            # Web araması sadece Darıca/yerel konular veya haber/duyuru kelimelerinde çalışsın
+            darica_ilgili = any(k in p_lower for k in ["darıca", "belediye", "millet bahçesi", "sahil", "baskan", "başkan", "muhtar", "kaymakam", "kocaeli", "mahalle", "sokak"])
+            guncel_kelime = any(kw in p_lower for kw in ["haber", "etkinlik", "son dakika", "bugün", "duyuru", "nedir", "son haber", "ne var", "program"])
+
+            if (not ilgili_baglam and darica_ilgili) or guncel_kelime:
                 web_sonuclari = web_arama_yap(prompt)
                 if web_sonuclari:
                     ajan_etiketi = "🛠️ **[Ajan Tetiklendi: web_arama_ajani]**\n\n"
@@ -268,24 +264,20 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             if not groq_client:
                 cevap = "⚠️ Sistem şu anda yanıt üretemiyor (Groq API anahtarı ayarlanmamış)."
             else:
-                # Dinamik İstemci (System Prompt) Yönetimi
+                # Sıkı Guardrail Sistem İstemcisi
                 if web_sonuclari:
                     system_prompt = (
                         "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n"
-                        "Sana [CANLI WEB ARAMA SONUÇLARI] altında güncel internet haberleri sağlandı.\n\n"
-                        "GÖREVİN:\n"
-                        "1. Arama sonuçlarındaki bilgileri net, anlaşılır ve öz bir Türkçe ile vatandaşa aktar.\n"
-                        "2. Arama sonuçlarında geçen olay, duyuru veya detayları yanıtında kullan.\n"
-                        "3. Kullanıcıya doğrudan doğal metin yanıtı ver."
+                        "ÖNEMLİ KURAL: Yemek tarifleri, genel kültür, yazılım, magazin veya kişisel tavsiyeler gibi Darıca Belediyesi ve Darıca ilçesi ile doğrudan ilgisi OLMAYAN konularda KESİNLİKLE TARİF VEYA BİLGİ VERME.\n"
+                        "Alakasız konularda SADECE 'Ben yalnızca Darıca Belediyesi hizmetleri ve Darıca ilçesi ile ilgili konularda yardımcı olan bir yapay zeka asistanıyım.' yanıtını dön.\n\n"
+                        "Eğer soru Darıca veya belediye ile ilgiliyse, [CANLI WEB ARAMA SONUÇLARI] içindeki bilgileri net ve kısa bir şekilde aktar."
                     )
                 else:
                     system_prompt = (
                         "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n"
-                        "Aşağıda verilen [REHBER BİLGİSİ] içindeki verilere dayanarak vatandaşın sorusunu yanıtla.\n\n"
-                        "KURALLAR:\n"
-                        "1. Sadece verilen rehber bilgilerini kullan, kural uydurma.\n"
-                        "2. Cevap rehberde yoksa 'Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz.' de.\n"
-                        "3. Yalnızca Darıca Belediyesi ve Darıca ilçesini ilgilendiren soruları yanıtla."
+                        "ÖNEMLİ KURAL: Yemek tarifleri, genel kültür, yazılım, eğlence vb. belediye hizmetleri veya Darıca ilçesi ile alakası olmayan konularda KESİNLİKLE TARİF VEYA YANIT VERME.\n"
+                        "Belediye dışı konularda SADECE 'Ben yalnızca Darıca Belediyesi hizmetleri ve Darıca ilçesi ile ilgili konularda yardımcı olan bir yapay zeka asistanıyım.' yanıtını ver.\n\n"
+                        "Darıca ile ilgili sorularda verilen [REHBER BİLGİSİ] verilerine dayanarak kısa, resmi ve net Türkçe yanıt ver."
                     )
 
                 baglam_metni = f"[REHBER BİLGİSİ]:\n{ilgili_baglam}\n\n[CANLI WEB ARAMA SONUÇLARI]:\n{web_sonuclari}"
@@ -298,8 +290,8 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_content}
                         ],
-                        temperature=0.2,
-                        max_tokens=400
+                        temperature=0.1,
+                        max_tokens=350
                     )
                     raw_cevap = completion.choices[0].message.content.strip()
                     cevap = f"{ajan_etiketi}{raw_cevap}" if raw_cevap else "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz."
