@@ -252,13 +252,40 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             cevap = f"🛠️ **[Ajan Tetiklendi: tesis_bilgisi_sorgula]**\n\nDarıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
 
 
-        # 3.5. Ajan: Yerel Haber Ajanı
+       # 3.5. Ajan: Yerel Haber Ajanı
         elif any(kw in p_lower for kw in ["son dakika", "yerel haber", "gündem"]):
             haber_metni = darica_son_dakika_haberleri()
+            
             if haber_metni:
                 cevap = f"🛠️ **[Ajan Tetiklendi: yerel_haber_ajani]**\n\nDarıca yerel basından öne çıkan son başlıklar:\n\n{haber_metni}"
+            else:
+                # Siteden veri çekilemezse yedek olarak Web Search ajanına yönlendirilir
+                web_sonuclari = web_arama_yap(prompt)
+                if web_sonuclari and groq_client:
+                    system_prompt = (
+                        "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n"
+                        "Vatandaşa [CANLI WEB ARAMA SONUÇLARI] içindeki güncel haberleri özetle."
+                    )
+                    user_content = f"[CANLI WEB ARAMA SONUÇLARI]:\n{web_sonuclari}\n\n[SORU]: {prompt}"
+                    
+                    try:
+                        completion = groq_client.chat.completions.create(
+                            model="qwen/qwen3.8-27b",
+                            messages=[
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_content}
+                            ],
+                            temperature=0.2,
+                            max_tokens=400
+                        )
+                        raw_cevap = completion.choices[0].message.content.strip()
+                        cevap = f"🛠️ **[Ajan Tetiklendi: web_arama_ajani]**\n\n{raw_cevap}"
+                    except Exception:
+                        cevap = "Şu anda güncel haber servisine ulaşılamıyor. Detaylı bilgi için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz."
+                else:
+                    cevap = "Şu anda güncel haber servisine ulaşılamıyor. Detaylı bilgi için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz."
 
-                
+
         # 4. RAG / Web Search / LLM
         else:
             ilgili_baglam = en_ilgili_paragrafi_bul(rehber_metni, prompt)
