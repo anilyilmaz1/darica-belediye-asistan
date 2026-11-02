@@ -115,36 +115,36 @@ def kaynaklari_yukle():
 
 
 def web_arama_yap(sorgu: str) -> str:
-    """Canlı İnternet Araması Yapar (Geliştirilmiş & Temizlenmiş)"""
+    """Canlı İnternet Araması Yapar (Konum Korumalı)"""
     if not DDGS:
         return ""
     try:
         p_lower = sorgu.lower()
-        # Haber ve son dakika aramalarında arama kelimesini sabitleme
+        # Hatay vb. alakasız şehirlerin çıkmasını önlemek için Kocaeli Darıca vurgusu
         if any(k in p_lower for k in ["haber", "son dakika", "gündem"]):
-            temiz_sorgu = "Darıca son dakika haberleri güncel"
+            temiz_sorgu = "Kocaeli Darıca ilçesi son dakika güncel haberler"
         else:
             temiz_sorgu = re.sub(r'(neler|nedir|var mı|mu|mı|nelerdir|\?)', '', sorgu, flags=re.IGNORECASE).strip()
             if "darıca" not in temiz_sorgu.lower():
-                temiz_sorgu = f"Darıca {temiz_sorgu}"
+                temiz_sorgu = f"Darıca Kocaeli {temiz_sorgu}"
 
         with DDGS() as ddgs:
-            results = list(ddgs.text(keywords=temiz_sorgu, region="tr-tr", max_results=4))
+            results = list(ddgs.text(keywords=temiz_sorgu, region="tr-tr", max_results=5))
             if not results:
                 return ""
             
-            # Bing/Android teknik içeriklerini eleyerek özet oluşturma
             filtreli_sonuclar = []
             for r in results:
                 body = r.get('body', '')
-                if not any(c in body.lower() for c in ["bing", "android app", "download", "browser"]):
-                    filtreli_sonuclar.append(f"- {r.get('title', '')}: {body}")
+                title = r.get('title', '')
+                # Alakasız illeri ve sistem çöplerini filtreleme
+                if not any(c in (title + body).lower() for c in ["hatay", "bing", "android app", "download"]):
+                    filtreli_sonuclar.append(f"- {title}: {body}")
                     
             return "\n".join(filtreli_sonuclar)
     except Exception as e:
         print(f"Web Arama Hatası: {e}")
         return ""
-
 
 def en_ilgili_paragrafi_bul(rehber_metni: str, soru: str) -> str:
     if not rehber_metni.strip():
@@ -324,10 +324,11 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                 else:
                     system_prompt = (
                         "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n\n"
-                        "ÖNEMLİ KURALLAR:\n"
-                        "1. Yanıtında KESİNLİKLE '[CANLI WEB ARAMA SONUÇLARI]' veya '[REHBER BİLGİSİ]' gibi sistem içi teknik başlık adlarını telaffuz etme!\n"
-                        "2. Arama sonuçlarında arama motoruna ait teknik hata/ayarlar geçiyorsa bunları dikkate alma ve 'Şu an güncel yerel haber akışına ulaşılamıyor' bilgisi ver.\n"
-                        "3. Doğrudan vatandaş odaklı, net ve kibar bir Türkçe ile yanıt ver."
+                        "KESİNLİKLE UYULMASI GEREKEN KURALLAR:\n"
+                        "1. Yanıtının içinde 'CANLI WEB ARAMA SONUÇLARI', 'REHBER BİLGİSİ' veya 'Arama sonuçları incelendiğinde' gibi TEKNİK SİSTEM İFADELERİNİ KESİNLİKLE KULLANMA!\n"
+                        "2. Sana sağlanan metinde Darıca dışındaki başka şehirler (Hatay, İstanbul vb.) varsa onları tamamen yok say.\n"
+                        "3. Eğer Darıca ile ilgili somut bir haber verisi yoksa doğrudan şu cevabı ver: 'Şu anda güncel yerel haber akışına ulaşılamamaktadır. Darıca ile ilgili duyuru ve haberler için darica.bel.tr adresini veya belediyemizin resmi sosyal medya hesaplarını takip edebilirsiniz.'\n"
+                        "4. Vatandaşa doğrudan, samimi ve kurumsal bir dille yanıt ver."
                     )
 
                 baglam_metni = f"[REHBER BİLGİSİ]:\n{ilgili_baglam}\n\n[CANLI WEB ARAMA SONUÇLARI]:\n{web_sonuclari}"

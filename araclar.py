@@ -168,33 +168,32 @@ def tesis_bilgisi_sorgula(sorgu: str, csv_path: str = "tesisler.csv") -> str:
 
 
 def darica_son_dakika_haberleri() -> str:
-    """Darıca yerel haber sitesinden en güncel haber başlıklarını çeker."""
-    try:
-        url = "https://www.daricagazetesi.com.tr/"
-        # Gerçek tarayıcı taklidi yapan başlıklar (Bot engelini aşmak için)
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
-        }
-        response = requests.get(url, headers=headers, timeout=6)
+    """Darıca yerel haber sitelerinden güncel başlıkları çeker."""
+    urls = [
+        "https://www.daricagazetesi.com.tr/",
+        "https://www.kocaeligazetesi.com.tr/darica"
+    ]
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept-Language": "tr-TR,tr;q=0.9"
+    }
+    
+    haberler = []
+    for url in urls:
+        try:
+            response = requests.get(url, headers=headers, timeout=4)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.content, "html.parser")
+                for item in soup.find_all(["h1", "h2", "h3", "a"]):
+                    baslik = item.get_text(strip=True)
+                    if 25 < len(baslik) < 110 and baslik not in haberler:
+                        if not any(x in baslik.lower() for x in ["çerez", "gizlilik", "künye", "iletişim", "tüm hakları", "hatay", "istanbul"]):
+                            haberler.append(f"• {baslik}")
+                    if len(haberler) >= 5:
+                        break
+        except Exception:
+            continue
+        if haberler:
+            break
 
-        if response.status_code != 200:
-            return ""
-
-        soup = BeautifulSoup(response.content, "html.parser")
-        haberler = []
-
-        # Başlık içeren HTML öğelerini tarar
-        for item in soup.find_all(["h2", "h3", "a"]):
-            baslik = item.get_text(strip=True)
-            # Metin uzunluğu ve alakasız menü filtreleme
-            if 25 < len(baslik) < 120 and baslik not in haberler:
-                if not any(x in baslik.lower() for x in ["çerez", "gizlilik", "künye", "iletişim", "tüm hakları", "kullanım şartları", "bing", "android"]):
-                    haberler.append(f"• {baslik}")
-            if len(haberler) == 5:
-                break
-
-        return "\n".join(haberler) if haberler else ""
-    except Exception as e:
-        print(f"Haber çekme hatası: {e}")
-        return ""
+    return "\n".join(haberler) if haberler else ""
