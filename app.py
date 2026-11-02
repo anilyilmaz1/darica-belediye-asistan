@@ -113,16 +113,24 @@ def kaynaklari_yukle():
 
 
 def web_arama_yap(sorgu: str) -> str:
-    """Canlı İnternet Araması Yapar"""
+    """Canlı İnternet Araması Yapar (Geliştirilmiş)"""
     if not DDGS:
         return ""
     try:
-        results = list(DDGS().text(f"Darıca {sorgu}", max_results=3))
-        if not results:
-            return ""
-        ozet = "\n".join([f"- {r.get('title', '')}: {r.get('body', '')}" for r in results])
-        return ozet
-    except Exception:
+        # Soru eklerini temizleme ve 'Darıca' kelimesi tekrarlarını önleme
+        temiz_sorgu = re.sub(r'(neler|nedir|var mı|mu|mı|nelerdir|\?)', '', sorgu, flags=re.IGNORECASE).strip()
+        if "darıca" not in temiz_sorgu.lower():
+            temiz_sorgu = f"Darıca {temiz_sorgu}"
+            
+        # DuckDuckGo Türkçe Bölgesi ve Context Manager Kullanımı
+        with DDGS() as ddgs:
+            results = list(ddgs.text(keywords=temiz_sorgu, region="tr-tr", max_results=4))
+            if not results:
+                return ""
+            ozet = "\n".join([f"- {r.get('title', '')}: {r.get('body', '')}" for r in results])
+            return ozet
+    except Exception as e:
+        print(f"Web Arama Hatası: {e}")
         return ""
 
 
