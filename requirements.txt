@@ -3,3 +3,4 @@ pypdf
 pandas
 groq
 requests
+python-dotenv
