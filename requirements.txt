@@ -3,6 +3,6 @@ groq
 pypdf
 requests
 python-dotenv
-duckduckgo-search
+ddgs
 beautifulsoup4
 feedparser

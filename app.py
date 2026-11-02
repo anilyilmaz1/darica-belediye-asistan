@@ -4,9 +4,10 @@ import pypdf
 import streamlit as st
 import streamlit.components.v1 as components
 from groq import Groq
-from araclar import darica_hizmet_hesapla, tesis_bilgisi_sorgula
 from weather import get_darica_weather
-from araclar import darica_hizmet_hesapla, tesis_bilgisi_sorgula, darica_son_dakika_haberleri
+from araclar import darica_hizmet_hesapla, tesis_bilgisi_sorgula, darica_son_dakika_haberleri, darica_web_arama
+from datetime import datetime
+
 
 # Dotenv güvenli içe aktarma
 try:
@@ -15,11 +16,6 @@ try:
 except ImportError:
     pass
 
-# DuckDuckGo Web Search güvenli içe aktarma
-try:
-    from duckduckgo_search import DDGS
-except ImportError:
-    DDGS = None
 
 # Sayfa Yapılandırması
 st.set_page_config(
@@ -114,37 +110,9 @@ def kaynaklari_yukle():
     return groq_client, pdf_text
 
 
-def web_arama_yap(sorgu: str) -> str:
-    """Canlı İnternet Araması Yapar (Konum Korumalı)"""
-    if not DDGS:
-        return ""
-    try:
-        p_lower = sorgu.lower()
-        # Hatay vb. alakasız şehirlerin çıkmasını önlemek için Kocaeli Darıca vurgusu
-        if any(k in p_lower for k in ["haber", "son dakika", "gündem"]):
-            temiz_sorgu = "Kocaeli Darıca ilçesi son dakika güncel haberler"
-        else:
-            temiz_sorgu = re.sub(r'(neler|nedir|var mı|mu|mı|nelerdir|\?)', '', sorgu, flags=re.IGNORECASE).strip()
-            if "darıca" not in temiz_sorgu.lower():
-                temiz_sorgu = f"Darıca Kocaeli {temiz_sorgu}"
-
-        with DDGS() as ddgs:
-            results = list(ddgs.text(keywords=temiz_sorgu, region="tr-tr", max_results=5))
-            if not results:
-                return ""
-            
-            filtreli_sonuclar = []
-            for r in results:
-                body = r.get('body', '')
-                title = r.get('title', '')
-                # Alakasız illeri ve sistem çöplerini filtreleme
-                if not any(c in (title + body).lower() for c in ["hatay", "bing", "android app", "download"]):
-                    filtreli_sonuclar.append(f"- {title}: {body}")
-                    
-            return "\n".join(filtreli_sonuclar)
-    except Exception as e:
-        print(f"Web Arama Hatası: {e}")
-        return ""
+def web_arama_yap(sorgu: str):
+    """(LLM için bağlam metni, kullanıcıya gösterilecek kaynak listesi) döndürür."""
+    return darica_web_arama(sorgu)
 
 def en_ilgili_paragrafi_bul(rehber_metni: str, soru: str) -> str:
     if not rehber_metni.strip():
@@ -268,7 +236,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                 cevap = f"🛠️ **[Ajan Tetiklendi: yerel_haber_ajani]**\n\nDarıca yerel basından öne çıkan son başlıklar:\n\n{haber_metni}"
             else:
                 # Siteden veri çekilemezse yedek olarak Web Search ajanına yönlendirilir
-                web_sonuclari = web_arama_yap(prompt)
+                web_sonuclari, _ = web_arama_yap(prompt)
                 if web_sonuclari and "darıca" in web_sonuclari.lower() and groq_client:
                     system_prompt = (
                         "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n"
@@ -306,22 +274,34 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             darica_ilgili = any(k in p_lower for k in ["darıca", "belediye", "millet bahçesi", "sahil", "baskan", "başkan", "muhtar", "kaymakam", "kocaeli", "mahalle", "sokak", "metro", "ulaşım", "otobüs", "proje", "parti", "bakan"])
             guncel_kelime = any(kw in p_lower for kw in ["haber", "etkinlik", "son dakika", "bugün", "duyuru", "nedir", "son haber", "ne var", "program", "ne zaman", "açılacak", "açılış", "asfalt", "yol", "çalışma", "bitti mi", "ne durumda"])
 
+            kaynaklar = ""
+            arama_yapildi = False
+
             if (not ilgili_baglam and darica_ilgili) or guncel_kelime:
-                web_sonuclari = web_arama_yap(prompt)
+                arama_yapildi = True
+                with st.spinner("Güncel kaynaklar aranıyor..."):
+                    web_sonuclari, kaynaklar = web_arama_yap(prompt)
                 if web_sonuclari:
                     ajan_etiketi = "🛠️ **[Ajan Tetiklendi: web_arama_ajani]**\n\n"
 
-            if not groq_client:
+            if arama_yapildi and not web_sonuclari and not ilgili_baglam:
+                # Kaynak yoksa modele cevap uydurtma
+                cevap = ("Bu konuda güncel bir kaynak bulamadım. Kesin bilgi için 153 Beyaz Masa "
+                         "hattımızı arayabilir veya darica.bel.tr adresini ziyaret edebilirsiniz.")
+            elif not groq_client:
                 cevap = "⚠️ Sistem şu anda yanıt üretemiyor (Groq API anahtarı ayarlanmamış)."
             else:
                 # Esnek ve Doğru Kapsam Belirleyen Sistem İstemcisi
                 if web_sonuclari:
                     system_prompt = (
                         "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n"
-                        "ÖNEMLİ KURALLAR:\n"
-                        "1. Darıca'nın Kocaeli iline bağlı olduğunu unutma! İstanbul veya İBB ile alakası yoktur. Ulaşım sorularında Kocaeli Büyükşehir Belediyesi veya Ulaştırma ve Altyapı Bakanlığı'nı referans göster.\n"
-                        "2. Yanıtında '[CANLI WEB ARAMA SONUÇLARI]' veya '[REHBER BİLGİSİ]' gibi iç sistem ifadelerini KESİNLİKLE KULLANMA. Doğrudan vatandaşa hitap eden doğal bir metin yaz.\n"
-                        "3. Arama sonuçlarındaki bilgileri net bir şekilde özetle. Bilgi yoksa Kocaeli Büyükşehir Belediyesi veya Ulaştırma Bakanlığı duyurularına yönlendir."
+                        f"Bugünün tarihi: {datetime.now().strftime('%d.%m.%Y')}.\n"
+                        "KURALLAR:\n"
+                        "1. Darıca, Kocaeli iline bağlıdır; İstanbul veya İBB ile ilgisi yoktur. Ulaşım sorularında Kocaeli Büyükşehir Belediyesi veya Ulaştırma ve Altyapı Bakanlığı'nı referans göster.\n"
+                        "2. Yalnızca aşağıdaki arama sonuçlarındaki bilgilere dayan. Sonuçlar sorunun cevabını içermiyorsa bunu açıkça söyle, tahmin yürütme.\n"
+                        "3. Haberin tarihini belirt. 1 aydan eski bir haberi 'güncel' diye sunma.\n"
+                        "4. Sonuçlarda yazmayan telefon numarası, tarih, rakam ve link ASLA uydurma. Gerekirse vatandaşı 153 Beyaz Masa hattına yönlendir.\n"
+                        "5. '[CANLI WEB ARAMA SONUÇLARI]' veya '[REHBER BİLGİSİ]' gibi iç sistem ifadelerini KULLANMA; vatandaşa doğal, kısa ve kurumsal bir dille yaz."
                     )
                 else:
                     system_prompt = (
@@ -348,6 +328,8 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                     )
                     raw_cevap = completion.choices[0].message.content.strip()
                     cevap = f"{ajan_etiketi}{raw_cevap}" if raw_cevap else "Darıca Metro projesi ve güncel ulaşım bilgileri için Kocaeli Büyükşehir Belediyesi veya Ulaştırma ve Altyapı Bakanlığı duyurularını takip edebilir, 153 Beyaz Masa hattından detay alabilirsiniz."
+                    if kaynaklar:
+                        cevap += f"\n\n📎 **Kaynaklar:**\n\n{kaynaklar}"
 
                 except Exception as e:
                     cevap = f"Bir hata oluştu: {str(e)}"

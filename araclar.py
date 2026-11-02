@@ -1,11 +1,20 @@
 import csv
 import os
 import re
+import time
 import requests
 from bs4 import BeautifulSoup
 import feedparser
-import time
-from urllib.parse import quote
+from datetime import datetime
+from urllib.parse import quote, urlparse
+
+try:
+    from ddgs import DDGS
+except ImportError:
+    try:
+        from duckduckgo_search import DDGS
+    except ImportError:
+        DDGS = None
 
 
 def darica_hizmet_hesapla(hizmet_tipi: str, parametre: str = "", yas: int = 0) -> str:
@@ -241,3 +250,156 @@ def darica_son_dakika_haberleri(adet: int = 5) -> str:
     if metin:  # boş sonucu önbelleğe alma
         _HABER_CACHE.update(zaman=time.time(), metin=metin)
     return metin
+
+
+_UA = {"User-Agent": "Mozilla/5.0 (compatible; DaricaAsistan/1.0)"}
+_ARAMA_CACHE = {}          # {sorgu: (zaman, (baglam, kaynaklar))}
+_ARAMA_CACHE_SURE = 600    # saniye (10 dk)
+_ALAKASIZ = ("hatay", "android app", "download")
+
+# Arama sorgusundan atılacak soru kalıpları
+_SORU_KELIMELERI = {
+    "mi", "mı", "mu", "mü", "midir", "mıdır", "bitti", "ne", "zaman", "neler",
+    "nedir", "nelerdir", "var", "nasıl", "hangi", "kaç", "kadar", "peki",
+    "acaba", "hala", "hâlâ", "şu", "an", "bu", "bir", "ve", "ile", "için",
+    "da", "de", "ki", "oldu", "bana", "söyle", "lütfen", "bugün", "hafta",
+    "açılacak", "başladı", "tamamlandı",
+}
+
+
+def _anahtar_kelimeler(sorgu: str) -> list:
+    metin = re.sub(r"['’]\w*", "", _tr_kucult(sorgu))   # Darıca'nın -> darıca
+    kelimeler = re.findall(r"\w+", metin)
+    return [k for k in kelimeler if k not in _SORU_KELIMELERI and len(k) > 1]
+
+
+def _arama_sorgulari(sorgu: str) -> list:
+    """Uzun ve kısa iki arama sorgusu üretir (uzun boş dönerse kısa denenir)."""
+    k = _anahtar_kelimeler(sorgu)
+    if "darıca" not in k and "darica" not in k:
+        k = ["darıca"] + k
+    uzun = " ".join(k[:7])
+    kisa = " ".join(k[:3])
+    return [uzun] if uzun == kisa else [uzun, kisa]
+
+
+def _tarih_coz(deger):
+    """struct_time ya da ISO metni -> datetime (olmazsa None)."""
+    try:
+        if deger is None or deger == "":
+            return None
+        if hasattr(deger, "tm_year"):
+            return datetime(*deger[:6])
+        return datetime.fromisoformat(str(deger).replace("Z", "+00:00")).replace(tzinfo=None)
+    except Exception:
+        return None
+
+
+def _google_haber_ara(sorgu: str, gun: int = 90) -> list:
+    url = ("https://news.google.com/rss/search?q=" + quote(f"{sorgu} when:{gun}d")
+           + "&hl=tr&gl=TR&ceid=TR:tr")
+    try:
+        r = requests.get(url, timeout=8, headers=_UA)
+        r.raise_for_status()
+        entries = feedparser.parse(r.content).entries
+    except Exception as e:
+        print(f"Google Haberler arama hatası: {e}")
+        return []
+
+    sonuc = []
+    for e in entries[:10]:
+        baslik = (e.get("title") or "").strip()
+        if not baslik:
+            continue
+        kaynak = ""
+        if " - " in baslik:   # "Başlık - Kaynak"
+            baslik, _, kaynak = baslik.rpartition(" - ")
+        sonuc.append({
+            "baslik": baslik, "link": e.get("link", ""), "kaynak": kaynak,
+            "ozet": "", "tarih": _tarih_coz(e.get("published_parsed")),
+        })
+    return sonuc
+
+
+def _ddg_ara(sorgu: str, adet: int = 5) -> list:
+    if not DDGS:
+        return []
+    try:
+        # Parametre adı sürümler arasında değiştiği için sorgu pozisyonel verilir
+        ham = DDGS().text(f"{sorgu} Kocaeli", region="tr-tr", max_results=adet) or []
+    except Exception as e:
+        print(f"DuckDuckGo arama hatası: {e}")
+        return []
+
+    sonuc = []
+    for r in ham:
+        link = r.get("href") or r.get("url") or ""
+        sonuc.append({
+            "baslik": (r.get("title") or "").strip(), "link": link,
+            "kaynak": urlparse(link).netloc.replace("www.", ""),
+            "ozet": (r.get("body") or "").strip(), "tarih": None,
+        })
+    return sonuc
+
+
+def darica_web_arama(sorgu: str, adet: int = 5):
+    """Darıca odaklı web araması (Google Haberler + DuckDuckGo).
+
+    Returns:
+        (baglam, kaynaklar): LLM'e verilecek bağlam metni ve kullanıcıya
+        gösterilecek tıklanabilir kaynak listesi. Sonuç yoksa ("", "").
+    """
+    sorgular = _arama_sorgulari(sorgu)
+    onbellek_anahtari = sorgular[0]
+    kayit = _ARAMA_CACHE.get(onbellek_anahtari)
+    if kayit and time.time() - kayit[0] < _ARAMA_CACHE_SURE:
+        return kayit[1]
+
+    sonuclar, gorulen = [], set()
+
+    def ekle(liste, darica_sart):
+        for s in liste:
+            if not s["baslik"]:
+                continue
+            norm = _tr_kucult(s["baslik"])
+            metin = norm + " " + _tr_kucult(s["ozet"])
+            if norm in gorulen or any(x in metin for x in _ALAKASIZ):
+                continue
+            if darica_sart and "darıca" not in metin and "darica" not in metin:
+                continue
+            gorulen.add(norm)
+            sonuclar.append(s)
+
+    # 1) Yerel haberler: önce uzun sorgu, az sonuç varsa kısa sorgu
+    for q in sorgular:
+        ekle(_google_haber_ara(q), False)
+        if len(sonuclar) >= 3:
+            break
+    del sonuclar[3:]
+
+    # 2) Genel web: resmî sayfalar, duyurular (sadece Darıca geçenler)
+    ekle(_ddg_ara(sorgular[0]), True)
+    del sonuclar[adet:]
+
+    if not sonuclar:
+        return "", ""
+
+    sonuclar.sort(key=lambda s: s["tarih"] or datetime.min, reverse=True)
+
+    baglam, kaynaklar = [], []
+    for s in sonuclar:
+        baslik = s["baslik"].replace("[", "(").replace("]", ")")
+        tarih = s["tarih"].strftime("%d.%m.%Y") if s["tarih"] else ""
+        kaynak = s["kaynak"] or "web"
+        satir = f"- [{tarih or 'tarih yok'}] {baslik} ({kaynak})"
+        if s["ozet"]:
+            satir += f": {s['ozet'][:300]}"
+        baglam.append(satir)
+        md = f"• [{baslik}]({s['link']}) — *{kaynak}*" if s["link"] else f"• {baslik} — *{kaynak}*"
+        if tarih:
+            md += f" · {tarih}"
+        kaynaklar.append(md)
+
+    sonuc = ("\n".join(baglam), "\n".join(kaynaklar))
+    _ARAMA_CACHE[onbellek_anahtari] = (time.time(), sonuc)
+    return sonuc
