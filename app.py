@@ -251,6 +251,14 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             hesaplanan = tesis_bilgisi_sorgula(prompt)
             cevap = f"🛠️ **[Ajan Tetiklendi: tesis_bilgisi_sorgula]**\n\nDarıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
 
+
+        # 3.5. Ajan: Yerel Haber Ajanı
+        elif any(kw in p_lower for kw in ["son dakika", "yerel haber", "gündem"]):
+            haber_metni = darica_son_dakika_haberleri()
+            if haber_metni:
+                cevap = f"🛠️ **[Ajan Tetiklendi: yerel_haber_ajani]**\n\nDarıca yerel basından öne çıkan son başlıklar:\n\n{haber_metni}"
+
+                
         # 4. RAG / Web Search / LLM
         else:
             ilgili_baglam = en_ilgili_paragrafi_bul(rehber_metni, prompt)
@@ -258,8 +266,8 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             ajan_etiketi = ""
 
             # Darıca, metro, ulaşım, projeler ve güncel aramalarda Web Search'ü çalıştır
-            darica_ilgili = any(k in p_lower for k in ["darıca", "belediye", "millet bahçesi", "sahil", "baskan", "başkan", "muhtar", "kaymakam", "kocaeli", "mahalle", "sokak", "metro", "ulaşım", "otobüs", "proje"])
-            guncel_kelime = any(kw in p_lower for kw in ["haber", "etkinlik", "son dakika", "bugün", "duyuru", "nedir", "son haber", "ne var", "program", "ne zaman", "açılacak", "açılış"])
+            darica_ilgili = any(k in p_lower for k in ["darıca", "belediye", "millet bahçesi", "sahil", "baskan", "başkan", "muhtar", "kaymakam", "kocaeli", "mahalle", "sokak", "metro", "ulaşım", "otobüs", "proje", "parti", "bakan"])
+            guncel_kelime = any(kw in p_lower for kw in ["haber", "etkinlik", "son dakika", "bugün", "duyuru", "nedir", "son haber", "ne var", "program", "ne zaman", "açılacak", "açılış", "asfalt", "yol", "çalışma", "bitti mi", "ne durumda"])
 
             if (not ilgili_baglam and darica_ilgili) or guncel_kelime:
                 web_sonuclari = web_arama_yap(prompt)
