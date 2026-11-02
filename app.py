@@ -75,8 +75,8 @@ with st.sidebar:
     st.caption("• Bayramoğlu'ndaki Kent Müzesi hangi gün kapalı?")
     st.caption("• Hafta sonu nikah kıydırma ücreti ne kadar?")
     st.caption("• 70 yaşındaki biri spor tesisinden indirim alabilir mi?")
+    st.caption("• 🌐 *Darıca metrosu ne zaman açılacak?* (Web Search)")
     st.caption("• 🌐 *Darıca Millet Bahçesi'nde bu hafta ne var?* (Web Search)")
-    st.caption("• 🌐 *Darıca son dakika haberleri neler?* (Web Search)")
     
     st.divider()
     st.markdown("""
@@ -252,9 +252,9 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             web_sonuclari = ""
             ajan_etiketi = ""
 
-            # Web araması sadece Darıca/yerel konular veya haber/duyuru kelimelerinde çalışsın
-            darica_ilgili = any(k in p_lower for k in ["darıca", "belediye", "millet bahçesi", "sahil", "baskan", "başkan", "muhtar", "kaymakam", "kocaeli", "mahalle", "sokak"])
-            guncel_kelime = any(kw in p_lower for kw in ["haber", "etkinlik", "son dakika", "bugün", "duyuru", "nedir", "son haber", "ne var", "program"])
+            # Darıca, metro, ulaşım, projeler ve güncel aramalarda Web Search'ü çalıştır
+            darica_ilgili = any(k in p_lower for k in ["darıca", "belediye", "millet bahçesi", "sahil", "baskan", "başkan", "muhtar", "kaymakam", "kocaeli", "mahalle", "sokak", "metro", "ulaşım", "otobüs", "proje"])
+            guncel_kelime = any(kw in p_lower for kw in ["haber", "etkinlik", "son dakika", "bugün", "duyuru", "nedir", "son haber", "ne var", "program", "ne zaman", "açılacak", "açılış"])
 
             if (not ilgili_baglam and darica_ilgili) or guncel_kelime:
                 web_sonuclari = web_arama_yap(prompt)
@@ -264,20 +264,22 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             if not groq_client:
                 cevap = "⚠️ Sistem şu anda yanıt üretemiyor (Groq API anahtarı ayarlanmamış)."
             else:
-                # Sıkı Guardrail Sistem İstemcisi
+                # Esnek ve Doğru Kapsam Belirleyen Sistem İstemcisi
                 if web_sonuclari:
                     system_prompt = (
                         "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n"
-                        "ÖNEMLİ KURAL: Yemek tarifleri, genel kültür, yazılım, magazin veya kişisel tavsiyeler gibi Darıca Belediyesi ve Darıca ilçesi ile doğrudan ilgisi OLMAYAN konularda KESİNLİKLE TARİF VEYA BİLGİ VERME.\n"
-                        "Alakasız konularda SADECE 'Ben yalnızca Darıca Belediyesi hizmetleri ve Darıca ilçesi ile ilgili konularda yardımcı olan bir yapay zeka asistanıyım.' yanıtını dön.\n\n"
-                        "Eğer soru Darıca veya belediye ile ilgiliyse, [CANLI WEB ARAMA SONUÇLARI] içindeki bilgileri net ve kısa bir şekilde aktar."
+                        "Darıca ilçesi, belediye projeleri, metro ve ulaşım hatları, haberler ve etkinlikler senin yetki alanındadır.\n\n"
+                        "KURAL:\n"
+                        "1. Soru Darıca, Darıca metrosu veya belediye ile ilgiliyse [CANLI WEB ARAMA SONUÇLARI] verilerini kullanarak kullanıcıya açık ve net bilgi ver. KESİNLİKLE 'Ben yalnızca Darıca asistanıyım' diyerek reddetme.\n"
+                        "2. YALNIZCA yemek tarifi, genel kültür, oyun, yazılım gibi Darıca/belediye ile HİÇ ilgisi olmayan konularda 'Ben yalnızca Darıca Belediyesi hizmetleri ve Darıca ilçesi ile ilgili konularda yardımcı olan bir yapay zeka asistanıyım.' yanıtını dön."
                     )
                 else:
                     system_prompt = (
                         "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n"
-                        "ÖNEMLİ KURAL: Yemek tarifleri, genel kültür, yazılım, eğlence vb. belediye hizmetleri veya Darıca ilçesi ile alakası olmayan konularda KESİNLİKLE TARİF VEYA YANIT VERME.\n"
-                        "Belediye dışı konularda SADECE 'Ben yalnızca Darıca Belediyesi hizmetleri ve Darıca ilçesi ile ilgili konularda yardımcı olan bir yapay zeka asistanıyım.' yanıtını ver.\n\n"
-                        "Darıca ile ilgili sorularda verilen [REHBER BİLGİSİ] verilerine dayanarak kısa, resmi ve net Türkçe yanıt ver."
+                        "Darıca ilçesi, belediye hizmetleri, ulaşım ve projeler senin alanındır.\n\n"
+                        "KURAL:\n"
+                        "1. Darıca veya metro/ulaşım sorulmuş ama net veri yoksa, Kocaeli Büyükşehir Belediyesi / Ulaştırma Bakanlığı projelerini takip edebileceklerini nazikçe belirt. KESİNLİKLE 'Ben yalnızca Darıca asistanıyım' diyerek soruyu reddetme (çünkü soru Darıca ile ilgilidir).\n"
+                        "2. YALNIZCA yemek tarifi, oyun, magazin, yazılım gibi Darıca ile tamamen alakasız konularda 'Ben yalnızca Darıca Belediyesi hizmetleri ve Darıca ilçesi ile ilgili konularda yardımcı olan bir yapay zeka asistanıyım.' yanıtını ver."
                     )
 
                 baglam_metni = f"[REHBER BİLGİSİ]:\n{ilgili_baglam}\n\n[CANLI WEB ARAMA SONUÇLARI]:\n{web_sonuclari}"
@@ -290,11 +292,11 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_content}
                         ],
-                        temperature=0.1,
-                        max_tokens=350
+                        temperature=0.2,
+                        max_tokens=400
                     )
                     raw_cevap = completion.choices[0].message.content.strip()
-                    cevap = f"{ajan_etiketi}{raw_cevap}" if raw_cevap else "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz."
+                    cevap = f"{ajan_etiketi}{raw_cevap}" if raw_cevap else "Darıca Metro projesi ve güncel ulaşım bilgileri için Kocaeli Büyükşehir Belediyesi veya Ulaştırma ve Altyapı Bakanlığı duyurularını takip edebilir, 153 Beyaz Masa hattından detay alabilirsiniz."
 
                 except Exception as e:
                     cevap = f"Bir hata oluştu: {str(e)}"
