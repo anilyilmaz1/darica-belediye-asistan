@@ -7,12 +7,18 @@ from groq import Groq
 from araclar import darica_hizmet_hesapla, tesis_bilgisi_sorgula
 from weather import get_darica_weather
 
-# Dotenv modülü yoksa uygulamanın çökmesini önleme
+# Dotenv güvenli içe aktarma
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
     pass
+
+# DuckDuckGo Web Search güvenli içe aktarma
+try:
+    from duckduckgo_search import DDGS
+except ImportError:
+    DDGS = None
 
 # Sayfa Yapılandırması
 st.set_page_config(
@@ -61,15 +67,15 @@ st.markdown("""
 with st.sidebar:
     st.title("🏛️ Darıca-Asistan")
     st.markdown("**Geliştirici:** Anıl Yılmaz")
-    st.markdown("**Sürüm:** Groq Llama-3.3 + RAG + Multi-Agent + Ulaşım Portal")
+    st.markdown("**Sürüm:** Groq Llama-3.3 + RAG + Multi-Agent + Web Search + Ulaşım Portal")
     st.divider()
     
     st.subheader("💡 Deneyebileceğiniz Sorular")
     st.caption("• Sahil Spor Salonu kaça kadar açık?")
-    st.caption("• Bayramoğlu'ndaki Kent Müzesi'ni ziyaret etmek istiyorum, hangi gün kapalı?")
+    st.caption("• Bayramoğlu'ndaki Kent Müzesi hangi gün kapalı?")
     st.caption("• Hafta sonu nikah kıydırma ücreti ne kadar?")
-    st.caption("• 70 yaşındaki biri spor tesisinden indirimli faydalanabilir mi?")
-    st.caption("• 5 litre atık yağ getirince ne veriliyor?")
+    st.caption("• 70 yaşındaki biri spor tesisinden indirim alabilir mi?")
+    st.caption("• 🌐 *Darıca Millet Bahçesi'nde bu hafta etkinlik var mı?* (Web Search)")
     
     st.divider()
     st.markdown("""
@@ -106,29 +112,33 @@ def kaynaklari_yukle():
     return groq_client, pdf_text
 
 
+def web_arama_yap(sorgu: str) -> str:
+    """Canlı İnternet Araması Yapar"""
+    if not DDGS:
+        return ""
+    try:
+        results = list(DDGS().text(f"Darıca {sorgu}", max_results=3))
+        if not results:
+            return ""
+        ozet = "\n".join([f"- {r.get('title', '')}: {r.get('body', '')}" for r in results])
+        return ozet
+    except Exception:
+        return ""
+
+
 def en_ilgili_paragrafi_bul(rehber_metni: str, soru: str) -> str:
     if not rehber_metni.strip():
         return ""
 
     raw_paragraflar = rehber_metni.split("\n\n")
-    paragraflar = []
-    for p in raw_paragraflar:
-        clean_p = re.sub(r'\s+', ' ', p).strip()
-        if len(clean_p) > 30:
-            paragraflar.append(clean_p)
+    paragraflar = [re.sub(r'\s+', ' ', p).strip() for p in raw_paragraflar if len(p.strip()) > 30]
     
     etkisizler = {"ve", "veya", "bir", "bu", "ile", "mi", "mı", "mu", "mü", "için", "da", "de", "ne", "zaman", "nasıl", "kadar"}
     soru_kelimeleri = set(re.findall(r'\w+', soru.lower())) - etkisizler
     
     es_anlamlilar = {
-        "depozito": "güvence",
-        "sonlandırmak": "kapat",
-        "sonlandırdığımda": "kapatıldığında",
-        "ücretsiz": "bedava",
-        "fiyat": "ücret",
-        "ücreti": "ücret",
-        "evlilik": "nikah",
-        "çöp": "atık"
+        "depozito": "güvence", "sonlandırmak": "kapat", "sonlandırdığımda": "kapatıldığında",
+        "ücretsiz": "bedava", "fiyat": "ücret", "ücreti": "ücret", "evlilik": "nikah", "çöp": "atık"
     }
     
     genisletilmis_kelimeler = set(soru_kelimeleri)
@@ -146,16 +156,15 @@ def en_ilgili_paragrafi_bul(rehber_metni: str, soru: str) -> str:
     skorlu_paragraflar.sort(key=lambda x: x[0], reverse=True)
     
     if skorlu_paragraflar:
-        en_iyi = [p[1] for p in skorlu_paragraflar[:2]]
-        return "\n\n".join(en_iyi)
+        return "\n\n".join([p[1] for p in skorlu_paragraflar[:2]])
     
-    return "\n\n".join(paragraflar[:2])
+    return ""
 
 
 with st.spinner("Hizmet rehberi ve servisler yükleniyor..."):
     groq_client, rehber_metni = kaynaklari_yukle()
 
-# SEKMELER (Sohbet & Canlı Ulaşım)
+# SEKMELER
 tab_asistan, tab_ulasim = st.tabs([
     "💬 Akıllı Vatandaş Asistanı", 
     "🚌 Darıca & Kocaeli Canlı Ulaşım Takip"
@@ -165,10 +174,10 @@ tab_asistan, tab_ulasim = st.tabs([
 with tab_asistan:
     if "messages" not in st.session_state:
         st.session_state.messages = [
-            {"role": "assistant", "content": "Merhaba Sayın Vatandaşımız! Darıca Belediyesi hizmetleri, tesislerimiz, çalışma saatleri veya başvuru ücretleri hakkında size nasıl yardımcı olabilirim?"}
+            {"role": "assistant", "content": "Merhaba Sayın Vatandaşımız! Darıca Belediyesi hizmetleri, tesislerimiz, çalışma saatleri, başvuru ücretleri veya güncel konular hakkında size nasıl yardımcı olabilirim?"}
         ]
 
-    # Konuşma geçmişini göster
+    # Mesaj geçmişi
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
@@ -185,17 +194,15 @@ with tab_ulasim:
     )
 
 # -------------------- EKRANIN EN ALTINDA SABİT CHAT INPUT --------------------
-# (Ana seviyede çağrıldığı için ekranın en altında sabit kalır, içerikle birlikte kaymaz)
 if prompt := st.chat_input("Sorunuzu yazınız..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
-    
     p_lower = prompt.lower()
     
-    # Kapsam Dışı Kontrolü
+    # 1. Kapsam Dışı / Başka Şehir Kontrolü
     baska_kurumlar = ["kadıköy", "kadikoy", "üsküdar", "izmit", "gebze", "istanbul büyükşehir", "ankara"]
     if any(kurum in p_lower for kurum in baska_kurumlar):
-        cevap = "Ben yalnızca Darıca Belediyesi hizmetleri için özelleştirilmiş bir AI asistanıyım. Başka belediyeler veya farklı kurumlar hakkında bilgi verememekteyim. Darıca Belediyesi ile ilgili sorularınızı memnuniyetle yanıtlayabilirim."
-        
+        cevap = "Ben yalnızca Darıca Belediyesi hizmetleri için özelleştirilmiş bir AI asistanıyım. Başka belediyeler veya farklı şehirler hakkında bilgi verememekteyim."
+
     else:
         yas_match = re.search(r'(\d+)\s*(yaş|yaşında)', p_lower)
         yas = int(yas_match.group(1)) if yas_match else 0
@@ -211,6 +218,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             any(h in p_lower for h in ["nikah", "otopark", "karavan", "su", "atık"])
         )
 
+        # 2. Ajan: Hesaplama & İndirim
         if not is_tesis_sorgusu and (is_hesaplama_sorgusu or yas > 0):
             hizmet_tipi = "genel"
             if "nikah" in p_lower:
@@ -227,30 +235,39 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             hesaplanan = darica_hizmet_hesapla(hizmet_tipi=hizmet_tipi, parametre=prompt, yas=yas)
             cevap = f"🛠️ **[Ajan Tetiklendi: darica_hizmet_hesapla]** (Hizmet: {hizmet_tipi})\n\nDarıca Belediyesi güncel tarifelerine göre:\n\n**{hesaplanan}**"
 
+        # 3. Ajan: Tesis Sorgusu
         elif is_tesis_sorgusu or any(kw in p_lower for kw in ["çalışma saati", "saat kaç", "kaça kadar", "açılış saati", "kapanış saati", "hangi gün kapalı"]):
             hesaplanan = tesis_bilgisi_sorgula(prompt)
             cevap = f"🛠️ **[Ajan Tetiklendi: tesis_bilgisi_sorgula]**\n\nDarıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
 
+        # 4. RAG / Web Search / LLM
         else:
-            FALLBACK = "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz."
             ilgili_baglam = en_ilgili_paragrafi_bul(rehber_metni, prompt)
+            web_sonuclari = ""
+            ajan_etiketi = ""
+
+            # Rehberde bulunamadıysa Web Search çalıştır
+            if not ilgili_baglam or any(kw in p_lower for kw in ["haber", "etkinlik", "son dakika", "bugün", "duyuru", "nedir"]):
+                web_sonuclari = web_arama_yap(prompt)
+                if web_sonuclari:
+                    ajan_etiketi = "🛠️ **[Ajan Tetiklendi: web_arama_ajani]**\n\n"
 
             if not groq_client:
                 cevap = "⚠️ Sistem şu anda yanıt üretemiyor (Groq API anahtarı ayarlanmamış)."
             else:
                 system_prompt = (
-                    "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın. "
-                    "Aşağıda verilen [REHBER BİLGİSİ] içindeki verilere dayanarak vatandaşın sorusunu "
+                    "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n"
+                    "Sana verilen rehber ve internet arama verilerine dayanarak vatandaşın sorusunu "
                     "kısa, net ve resmi bir Türkçe ile yanıtla.\n\n"
                     "KURALLAR:\n"
-                    "1. Sadece verilen bilgileri kullan, bilgi dışı kural veya rakam uydurma.\n"
-                    "2. Cevap rehberde yoksa 'Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz.' de.\n"
+                    "1. Verilen bilgileri önceliklendir, bilgi dışı kural veya rakam uydurma.\n"
+                    "2. Bilgi hiç yoksa 'Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz.' de.\n"
                     "3. Türkçe dışında dil kullanma.\n"
-                    "4. Yalnızca Darıca Belediyesi hizmetleri ile ilgili soruları yanıtla. Başka belediye veya alakasız sorularda bilgi veremeyeceğini belirt.\n"
-                    "5. Kullanıcıya YALNIZCA doğal metin olarak yanıt dön."
+                    "4. Yalnızca Darıca Belediyesi ve Darıca ilçesini ilgilendiren soruları yanıtla."
                 )
 
-                user_content = f"[REHBER BİLGİSİ]:\n{ilgili_baglam}\n\n[SORU]: {prompt}"
+                baglam_metni = f"[REHBER BİLGİSİ]:\n{ilgili_baglam}\n\n[CANLI WEB ARAMA SONUÇLARI]:\n{web_sonuclari}"
+                user_content = f"{baglam_metni}\n\n[SORU]: {prompt}"
 
                 try:
                     completion = groq_client.chat.completions.create(
@@ -260,12 +277,11 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                             {"role": "user", "content": user_content}
                         ],
                         temperature=0.2,
-                        max_tokens=300
+                        max_tokens=350
                     )
-                    cevap = completion.choices[0].message.content.strip()
+                    raw_cevap = completion.choices[0].message.content.strip()
+                    cevap = f"{ajan_etiketi}{raw_cevap}" if raw_cevap else "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz."
 
-                    if not cevap or len(cevap) < 8:
-                        cevap = FALLBACK
                 except Exception as e:
                     cevap = f"Bir hata oluştu: {str(e)}"
 

@@ -4,3 +4,4 @@ pandas
 groq
 requests
 python-dotenv
+duckduckgo-search
