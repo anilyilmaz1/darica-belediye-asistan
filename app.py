@@ -60,6 +60,11 @@ st.markdown("""
         background-color: #F3F4F6; padding: 10px; border-radius: 6px;
         font-size: 0.78rem; color: #4B5563; border-left: 4px solid #6B7280;
     }
+    .tool-badge {
+        background-color: #FEF3C7; color: #92400E; padding: 6px 12px;
+        border-radius: 6px; font-weight: 600; font-size: 0.85rem;
+        border: 1px solid #FCD34D; margin-bottom: 8px; display: inline-block;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -75,7 +80,8 @@ with st.sidebar:
     st.caption("• Bayramoğlu'ndaki Kent Müzesi hangi gün kapalı?")
     st.caption("• Hafta sonu nikah kıydırma ücreti ne kadar?")
     st.caption("• 70 yaşındaki biri spor tesisinden indirim alabilir mi?")
-    st.caption("• 🌐 *Darıca Millet Bahçesi'nde bu hafta etkinlik var mı?* (Web Search)")
+    st.caption("• 🌐 *Darıca Millet Bahçesi'nde bu hafta ne var?* (Web Search)")
+    st.caption("• 🌐 *Darıca son dakika haberleri neler?* (Web Search)")
     
     st.divider()
     st.markdown("""
@@ -113,7 +119,7 @@ def kaynaklari_yukle():
 
 
 def web_arama_yap(sorgu: str) -> str:
-    """Canlı İnternet Araması Yapar (Geliştirilmiş)"""
+    """Canlı İnternet Araması Yapar (Geliştirilmiş & Bölge Destekli)"""
     if not DDGS:
         return ""
     try:
@@ -122,7 +128,6 @@ def web_arama_yap(sorgu: str) -> str:
         if "darıca" not in temiz_sorgu.lower():
             temiz_sorgu = f"Darıca {temiz_sorgu}"
             
-        # DuckDuckGo Türkçe Bölgesi ve Context Manager Kullanımı
         with DDGS() as ddgs:
             results = list(ddgs.text(keywords=temiz_sorgu, region="tr-tr", max_results=4))
             if not results:
@@ -185,7 +190,7 @@ with tab_asistan:
             {"role": "assistant", "content": "Merhaba Sayın Vatandaşımız! Darıca Belediyesi hizmetleri, tesislerimiz, çalışma saatleri, başvuru ücretleri veya güncel konular hakkında size nasıl yardımcı olabilirim?"}
         ]
 
-    # Mesaj geçmişi
+    # Mesaj geçmişini render et (Girdi kutusunun üstünde kalır)
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
@@ -254,8 +259,8 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             web_sonuclari = ""
             ajan_etiketi = ""
 
-            # Rehberde bulunamadıysa Web Search çalıştır
-            if not ilgili_baglam or any(kw in p_lower for kw in ["haber", "etkinlik", "son dakika", "bugün", "duyuru", "nedir"]):
+            # Rehberde eşleşme zayıfsa veya güncel konu sorgulanıyorsa Web Search çalıştır
+            if not ilgili_baglam or any(kw in p_lower for kw in ["haber", "etkinlik", "son dakika", "bugün", "duyuru", "nedir", "son haber"]):
                 web_sonuclari = web_arama_yap(prompt)
                 if web_sonuclari:
                     ajan_etiketi = "🛠️ **[Ajan Tetiklendi: web_arama_ajani]**\n\n"
@@ -263,16 +268,25 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
             if not groq_client:
                 cevap = "⚠️ Sistem şu anda yanıt üretemiyor (Groq API anahtarı ayarlanmamış)."
             else:
-                system_prompt = (
-                    "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n"
-                    "Sana verilen rehber ve internet arama verilerine dayanarak vatandaşın sorusunu "
-                    "kısa, net ve resmi bir Türkçe ile yanıtla.\n\n"
-                    "KURALLAR:\n"
-                    "1. Verilen bilgileri önceliklendir, bilgi dışı kural veya rakam uydurma.\n"
-                    "2. Bilgi hiç yoksa 'Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz.' de.\n"
-                    "3. Türkçe dışında dil kullanma.\n"
-                    "4. Yalnızca Darıca Belediyesi ve Darıca ilçesini ilgilendiren soruları yanıtla."
-                )
+                # Dinamik İstemci (System Prompt) Yönetimi
+                if web_sonuclari:
+                    system_prompt = (
+                        "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n"
+                        "Sana [CANLI WEB ARAMA SONUÇLARI] altında güncel internet haberleri sağlandı.\n\n"
+                        "GÖREVİN:\n"
+                        "1. Arama sonuçlarındaki bilgileri net, anlaşılır ve öz bir Türkçe ile vatandaşa aktar.\n"
+                        "2. Arama sonuçlarında geçen olay, duyuru veya detayları yanıtında kullan.\n"
+                        "3. Kullanıcıya doğrudan doğal metin yanıtı ver."
+                    )
+                else:
+                    system_prompt = (
+                        "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n"
+                        "Aşağıda verilen [REHBER BİLGİSİ] içindeki verilere dayanarak vatandaşın sorusunu yanıtla.\n\n"
+                        "KURALLAR:\n"
+                        "1. Sadece verilen rehber bilgilerini kullan, kural uydurma.\n"
+                        "2. Cevap rehberde yoksa 'Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz.' de.\n"
+                        "3. Yalnızca Darıca Belediyesi ve Darıca ilçesini ilgilendiren soruları yanıtla."
+                    )
 
                 baglam_metni = f"[REHBER BİLGİSİ]:\n{ilgili_baglam}\n\n[CANLI WEB ARAMA SONUÇLARI]:\n{web_sonuclari}"
                 user_content = f"{baglam_metni}\n\n[SORU]: {prompt}"
@@ -285,7 +299,7 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                             {"role": "user", "content": user_content}
                         ],
                         temperature=0.2,
-                        max_tokens=350
+                        max_tokens=400
                     )
                     raw_cevap = completion.choices[0].message.content.strip()
                     cevap = f"{ajan_etiketi}{raw_cevap}" if raw_cevap else "Bu konuda detaylı bilgi almak için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz."
