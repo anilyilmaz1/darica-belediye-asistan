@@ -115,24 +115,32 @@ def kaynaklari_yukle():
 
 
 def web_arama_yap(sorgu: str) -> str:
-    """Canlı İnternet Araması Yapar (Geliştirilmiş & Spesifik)"""
+    """Canlı İnternet Araması Yapar (Geliştirilmiş & Temizlenmiş)"""
     if not DDGS:
         return ""
     try:
-        temiz_sorgu = re.sub(r'(neler|nedir|var mı|mu|mı|nelerdir|\?)', '', sorgu, flags=re.IGNORECASE).strip()
-        
-        # Metro sorularında Gebze-Darıca vurgusu ekleme
-        if "metro" in temiz_sorgu.lower():
-            temiz_sorgu = "Gebze Darıca metrosu açılış tarihi haberleri"
-        elif "darıca" not in temiz_sorgu.lower():
-            temiz_sorgu = f"Darıca {temiz_sorgu}"
-            
+        p_lower = sorgu.lower()
+        # Haber ve son dakika aramalarında arama kelimesini sabitleme
+        if any(k in p_lower for k in ["haber", "son dakika", "gündem"]):
+            temiz_sorgu = "Darıca son dakika haberleri güncel"
+        else:
+            temiz_sorgu = re.sub(r'(neler|nedir|var mı|mu|mı|nelerdir|\?)', '', sorgu, flags=re.IGNORECASE).strip()
+            if "darıca" not in temiz_sorgu.lower():
+                temiz_sorgu = f"Darıca {temiz_sorgu}"
+
         with DDGS() as ddgs:
             results = list(ddgs.text(keywords=temiz_sorgu, region="tr-tr", max_results=4))
             if not results:
                 return ""
-            ozet = "\n".join([f"- {r.get('title', '')}: {r.get('body', '')}" for r in results])
-            return ozet
+            
+            # Bing/Android teknik içeriklerini eleyerek özet oluşturma
+            filtreli_sonuclar = []
+            for r in results:
+                body = r.get('body', '')
+                if not any(c in body.lower() for c in ["bing", "android app", "download", "browser"]):
+                    filtreli_sonuclar.append(f"- {r.get('title', '')}: {body}")
+                    
+            return "\n".join(filtreli_sonuclar)
     except Exception as e:
         print(f"Web Arama Hatası: {e}")
         return ""
@@ -315,11 +323,11 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                     )
                 else:
                     system_prompt = (
-                        "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n"
-                        "Darıca ilçesi, belediye hizmetleri, ulaşım ve projeler senin alanındır.\n\n"
-                        "KURAL:\n"
-                        "1. Darıca veya metro/ulaşım sorulmuş ama net veri yoksa, Kocaeli Büyükşehir Belediyesi / Ulaştırma Bakanlığı projelerini takip edebileceklerini nazikçe belirt. KESİNLİKLE 'Ben yalnızca Darıca asistanıyım' diyerek soruyu reddetme (çünkü soru Darıca ile ilgilidir).\n"
-                        "2. YALNIZCA yemek tarifi, oyun, magazin, yazılım gibi Darıca ile tamamen alakasız konularda 'Ben yalnızca Darıca Belediyesi hizmetleri ve Darıca ilçesi ile ilgili konularda yardımcı olan bir yapay zeka asistanıyım.' yanıtını ver."
+                        "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n\n"
+                        "ÖNEMLİ KURALLAR:\n"
+                        "1. Yanıtında KESİNLİKLE '[CANLI WEB ARAMA SONUÇLARI]' veya '[REHBER BİLGİSİ]' gibi sistem içi teknik başlık adlarını telaffuz etme!\n"
+                        "2. Arama sonuçlarında arama motoruna ait teknik hata/ayarlar geçiyorsa bunları dikkate alma ve 'Şu an güncel yerel haber akışına ulaşılamıyor' bilgisi ver.\n"
+                        "3. Doğrudan vatandaş odaklı, net ve kibar bir Türkçe ile yanıt ver."
                     )
 
                 baglam_metni = f"[REHBER BİLGİSİ]:\n{ilgili_baglam}\n\n[CANLI WEB ARAMA SONUÇLARI]:\n{web_sonuclari}"
