@@ -8,7 +8,6 @@ import feedparser
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote, urlparse
 import html
-import cloudscraper
 import streamlit as st
 
 try:
