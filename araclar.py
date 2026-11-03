@@ -436,32 +436,41 @@ def piyasa_verileri_getir() -> dict:
 
 
 def get_nobetci_eczane():
-    """Darıca'daki tüm nöbetçi eczaneleri canlı çeker.
-
-    Bağlantı koparsa veya veri çekilemezse boş liste döner (yanıltıcı veri
-    vermemek için).
-    """
     eczaneler = []
     try:
         url = "https://www.eczaneler.gen.tr/nobetci-kocaeli-darica"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        response = requests.get(url, headers=headers, timeout=4)
+        # Gerçek bir masaüstü tarayıcısını taklit eden gelişmiş header
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+        }
+
+        response = requests.get(url, headers=headers, timeout=8)
 
         if response.status_code == 200:
             soup = BeautifulSoup(response.content, "html.parser")
+            # Sitedeki eczane kartlarını hedefliyoruz
             cards = soup.find_all("div", class_="col-md-6")
 
             for card in cards:
                 try:
-                    isim = card.find("span", class_="eczane-adi").text.strip()
-                    adres = card.find("div", class_="col-lg-6").text.strip()
-                    tel = card.find("a", class_="phone-btn").text.strip()
-                    eczaneler.append(
-                        {"isim": isim, "adres": adres, "telefon": tel}
-                    )
+                    isim_elem = card.find("span", class_="eczane-adi")
+                    adres_elem = card.find("div", class_="col-lg-6")
+                    tel_elem = card.find("a", class_="phone-btn")
+
+                    if isim_elem and adres_elem:
+                        isim = isim_elem.text.strip()
+                        adres = adres_elem.text.strip()
+                        tel = tel_elem.text.strip() if tel_elem else "N/A"
+                        eczaneler.append(
+                            {"isim": isim, "adres": adres, "telefon": tel}
+                        )
                 except Exception:
                     continue
 
         return eczaneler
     except Exception:
-        return []  # Hata durumunda boş liste döner
+        return []

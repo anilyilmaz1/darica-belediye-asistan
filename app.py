@@ -120,11 +120,11 @@ if eczaneler:
             )
 
 else:
-    # Veri çekilemediğinde kullanıcıya gösterilecek güvenli uyarı mesajı
     st.info(
-        "🏥 **Nöbetçi Eczane Bilgisi:** Anlık nöbetçi eczane verisi sunucudan"
-        " alınamadı. En güncel bilgi için lütfen Kocaeli Eczacı Odası veya 112"
-        " hattı üzerinden teyit ediniz."
+        "🏥 **Nöbetçi Eczane Bilgisi:** Canlı nöbetçi eczane verisi sunucudan"
+        " alınamadı. Güncel listeye [Kocaeli Eczacı Odası Resmi"
+        " Sayfası](https://www.kocaolieo.org.tr/nobetci-eczaneler) üzerinden"
+        " veya 112 hattından ulaşabilirsiniz."
     )
 
 st.markdown("---") 
