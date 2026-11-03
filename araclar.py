@@ -437,14 +437,32 @@ def piyasa_verileri_getir() -> dict:
     return {"usd": "—", "eur": "—", "altin": "—"}
 
 
+import html
+import re
+import time
+from datetime import datetime, timedelta, timezone
+from bs4 import BeautifulSoup
+import cloudscraper
+
 _ECZANE_URL = "https://www.eczaneler.gen.tr/nobetci-kocaeli-darica"
 _ECZANE_CACHE = {"zaman": 0.0, "bitis": None, "veri": [], "hata_zamani": 0.0}
-_ECZANE_CACHE_SURE = 1200      # başarılı sonuç: en fazla 20 dk
-_ECZANE_HATA_BEKLEME = 120     # başarısız denemeden sonra 2 dk bekle
+_ECZANE_CACHE_SURE = 1200  # başarılı sonuç: en fazla 20 dk
+_ECZANE_HATA_BEKLEME = 120  # başarısız denemeden sonra 2 dk bekle
 _TEL_DESEN = re.compile(r"0\s*\(?\d{3}\)?[\s.-]*\d{3}[\s.-]*\d{2}[\s.-]*\d{2}")
-_AY = {"ocak": 1, "şubat": 2, "mart": 3, "nisan": 4, "mayıs": 5, "haziran": 6,
-       "temmuz": 7, "ağustos": 8, "eylül": 9, "ekim": 10, "kasım": 11, "aralık": 12}
-# "3 Kasım Salı akşamından 4 Kasım Çarşamba sabahına kadar."  (gün adı "P.tesi" gibi noktalı olabilir)
+_AY = {
+    "ocak": 1,
+    "şubat": 2,
+    "mart": 3,
+    "nisan": 4,
+    "mayıs": 5,
+    "haziran": 6,
+    "temmuz": 7,
+    "ağustos": 8,
+    "eylül": 9,
+    "ekim": 10,
+    "kasım": 11,
+    "aralık": 12,
+}
 _ARALIK_DESEN = re.compile(
     r"(\d{1,2})\s+([^\W\d_]+)\s+\S+\s+akşamından\s+"
     r"(\d{1,2})\s+([^\W\d_]+)\s+\S+\s+sabahına\s+kadar",
@@ -455,6 +473,24 @@ _ARALIK_DESEN = re.compile(
 def _tr_simdi() -> datetime:
     """Türkiye saati (sunucu UTC olsa bile doğru çalışır)."""
     return datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=3)
+
+
+def _tr_kucult(metin: str) -> str:
+    """Türkçe karakter uyumlu küçük harfe çevirme."""
+    if not metin:
+        return ""
+    replacements = {
+        "İ": "i",
+        "I": "ı",
+        "Ş": "ş",
+        "Ğ": "ğ",
+        "Ü": "ü",
+        "Ö": "ö",
+        "Ç": "ç",
+    }
+    for search, replace in replacements.items():
+        metin = metin.replace(search, replace)
+    return metin.lower()
 
 
 def _yakin_tarih(gun: int, ay: int, simdi: datetime):
@@ -475,65 +511,75 @@ def _telefon_bicimle(ham: str) -> str:
 
 
 def _tablo_satirlari(tablo) -> list:
-    """Her eczane: <div class="row"> içinde span.isim (ad), div.col-lg-6 (adres),
-    son div.col-lg-3 (telefon)."""
     sonuc = []
     for satir in tablo.find_all("div", class_="row"):
         isim_el = satir.find("span", class_="isim")
         if not isim_el:
-            continue                         # başlık satırı ("Eczane Adres Telefon")
+            continue
         isim = isim_el.get_text(" ", strip=True)
 
         adres, tarif = "", ""
         adres_div = satir.find("div", class_="col-lg-6")
         if adres_div:
-            adres = next((str(s).strip() for s in adres_div.find_all(string=True, recursive=False)
-                          if str(s).strip()), "")
+            adres = next(
+                (
+                    str(s).strip()
+                    for s in adres_div.find_all(string=True, recursive=False)
+                    if str(s).strip()
+                ),
+                "",
+            )
             t = adres_div.find("span", class_="font-italic")
             tarif = t.get_text(" ", strip=True) if t else ""
 
         tel_kolonlari = satir.find_all("div", class_="col-lg-3")
-        tel_metni = tel_kolonlari[-1].get_text(" ", strip=True) if tel_kolonlari else satir.get_text(" ", strip=True)
+        tel_metni = (
+            tel_kolonlari[-1].get_text(" ", strip=True)
+            if tel_kolonlari
+            else satir.get_text(" ", strip=True)
+        )
         m = _TEL_DESEN.search(tel_metni)
         telefon = _telefon_bicimle(m.group(0)) if m else ""
 
         if isim and (adres or telefon):
-            sonuc.append({
-                "isim": html.escape(isim),
-                "adres": html.escape(f"{adres} — {tarif}" if tarif else adres),
-                "telefon": html.escape(telefon or "N/A"),
-            })
+            sonuc.append(
+                {
+                    "isim": html.escape(isim),
+                    "adres": html.escape(
+                        f"{adres} — {tarif}" if tarif else adres
+                    ),
+                    "telefon": html.escape(telefon or "N/A"),
+                }
+            )
     return sonuc
 
 
 def _bantlari_bul(soup) -> list:
-    """Nöbet aralığı cümlesini içeren en iç etiketleri bulur (cümle etiketlere bölünmüş olabilir)."""
     bantlar = []
     for tag in soup.find_all(True):
         metin = tag.get_text(" ", strip=True)
         if len(metin) > 300:
-            continue                        # büyük kapsayıcıları ele
+            continue
         m = _ARALIK_DESEN.search(metin)
         if not m:
             continue
-        if any(_ARALIK_DESEN.search(c.get_text(" ", strip=True)) for c in tag.find_all(True)):
-            continue                        # içindeki bir etiket de eşleşiyorsa en içtekini al
+        if any(
+            _ARALIK_DESEN.search(c.get_text(" ", strip=True))
+            for c in tag.find_all(True)
+        ):
+            continue
         bantlar.append(m)
     return bantlar
 
 
 def _eczane_sayfasini_coz(html_metni: str, simdi: datetime = None):
-    """Sayfada n nöbet bandı ve n eczane tablosu vardır; i. bant i. tabloya aittir
-    (bant DOM'da tablosundan sonra gelir). Sayılar tutmazsa yanlış eşleşme riskine
-    girmeden boş döner. Şu an geçerli ya da yaklaşan nöbeti seçer.
-
-    Returns: (eczaneler, gecerlilik_metni, bitis_zamani)"""
     simdi = simdi or _tr_simdi()
     soup = BeautifulSoup(html_metni, "html.parser")
 
     bantlar = _bantlari_bul(soup)
-    tablolar = [t for t in soup.find_all("table") if t.find("span", class_="isim")]
-    print(f"Eczane ayrıştırma: {len(bantlar)} nöbet bandı, {len(tablolar)} eczane tablosu bulundu.")
+    tablolar = [
+        t for t in soup.find_all("table") if t.find("span", class_="isim")
+    ]
     if not bantlar or len(bantlar) != len(tablolar):
         return [], "", None
 
@@ -543,12 +589,17 @@ def _eczane_sayfasini_coz(html_metni: str, simdi: datetime = None):
         bitis_gun = _yakin_tarih(int(m.group(3)), ay, simdi) if ay else None
         if bitis_gun is None:
             continue
-        # Nöbet bitişi: bitiş günü sabah 09:00 (siteler genelde 08:30-09:00'da değiştirir)
-        paneller.append((bitis_gun.replace(hour=9), re.sub(r"\s+", " ", m.group(0)).strip(), tablo))
+        paneller.append(
+            (
+                bitis_gun.replace(hour=9),
+                re.sub(r"\s+", " ", m.group(0)).strip(),
+                tablo,
+            )
+        )
 
     paneller.sort(key=lambda p: p[0])
     for bitis, metin, tablo in paneller:
-        if bitis > simdi:                       # henüz bitmemiş ilk nöbet
+        if bitis > simdi:
             liste = _tablo_satirlari(tablo)
             if liste:
                 return liste, metin, bitis
@@ -556,19 +607,22 @@ def _eczane_sayfasini_coz(html_metni: str, simdi: datetime = None):
 
 
 def get_nobetci_eczane() -> list:
-    """Darıca nöbetçi eczaneleri (eczaneler.gen.tr). Her kayıtta 'gecerlilik' alanı
-    nöbet aralığını taşır. Önbellekli; hata olursa bayat veri DÖNMEZ."""
+    """Darıca nöbetçi eczanelerini cloudscraper ile çeker."""
     simdi = _tr_simdi()
     zaman = time.time()
 
     c = _ECZANE_CACHE
-    if c["veri"] and zaman - c["zaman"] < _ECZANE_CACHE_SURE and c["bitis"] and simdi < c["bitis"]:
+    if (
+        c["veri"]
+        and zaman - c["zaman"] < _ECZANE_CACHE_SURE
+        and c["bitis"]
+        and simdi < c["bitis"]
+    ):
         return c["veri"]
     if zaman - c["hata_zamani"] < _ECZANE_HATA_BEKLEME:
         return []
 
     try:
-        # requests.get yerine Cloudflare engelini aşan scraper kullanıyoruz
         scraper = cloudscraper.create_scraper(
             browser={
                 "browser": "chrome",
@@ -587,8 +641,6 @@ def get_nobetci_eczane() -> list:
                     e["gecerlilik"] = html.escape(gecerlilik)
                 c.update(zaman=zaman, bitis=bitis, veri=liste)
                 return liste
-            print("Eczane sayfasında geçerli nöbet aralığı/tablo bulunamadı "
-                  "(sayfa yapısı değişmiş ya da liste güncel değil).")
     except Exception as e:
         print(f"Eczane kaynağı hatası: {e}")
 
