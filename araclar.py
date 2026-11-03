@@ -182,7 +182,7 @@ def tesis_bilgisi_sorgula(sorgu: str, csv_path: str = "tesisler.csv") -> str:
 _HABER_CACHE = {"zaman": 0.0, "metin": ""}
 _HABER_CACHE_SURE = 600  # saniye (10 dk)
 
-# (adres, başlıkta "Darıca" filtresi uygula mı?)
+# (adres, başlıkta "Darıca" filtresi uygular mı?)
 _HABER_KAYNAKLARI = [
     # Google Haberler araması zaten "Darıca" için süzülmüş geliyor
     ("https://news.google.com/rss/search?q=" + quote("Darıca Kocaeli when:7d")
