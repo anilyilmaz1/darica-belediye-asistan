@@ -8,6 +8,7 @@ import feedparser
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote, urlparse
 import html
+import cloudscraper
 
 try:
     from ddgs import DDGS
@@ -567,11 +568,16 @@ def get_nobetci_eczane() -> list:
         return []
 
     try:
-        r = requests.get(_ECZANE_URL, timeout=8, headers={
-            "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                           "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
-            "Accept-Language": "tr-TR,tr;q=0.9",
-        })
+        # requests.get yerine Cloudflare engelini aşan scraper kullanıyoruz
+        scraper = cloudscraper.create_scraper(
+            browser={
+                "browser": "chrome",
+                "platform": "windows",
+                "desktop": True,
+            }
+        )
+        r = scraper.get(_ECZANE_URL, timeout=10)
+
         if r.status_code != 200:
             print(f"Eczane kaynağı HTTP {r.status_code}: {_ECZANE_URL}")
         else:
