@@ -437,17 +437,11 @@ def piyasa_verileri_getir() -> dict:
     return {"usd": "—", "eur": "—", "altin": "—"}
 
 
-import html
-import re
-import time
-from datetime import datetime, timedelta, timezone
-from bs4 import BeautifulSoup
-import cloudscraper
-
 _ECZANE_URL = "https://www.eczaneler.gen.tr/nobetci-kocaeli-darica"
+_YEDEK_ECZANE_URL = "https://www.cnnturk.com/nobetci-eczaneler/kocaeli/darica/"
+
 _ECZANE_CACHE = {"zaman": 0.0, "bitis": None, "veri": [], "hata_zamani": 0.0}
-_ECZANE_CACHE_SURE = 1200  # başarılı sonuç: en fazla 20 dk
-_ECZANE_HATA_BEKLEME = 120  # başarısız denemeden sonra 2 dk bekle
+_ECZANE_CACHE_SURE = 1200  # 20 dakika cache
 _TEL_DESEN = re.compile(r"0\s*\(?\d{3}\)?[\s.-]*\d{3}[\s.-]*\d{2}[\s.-]*\d{2}")
 _AY = {
     "ocak": 1,
@@ -471,12 +465,10 @@ _ARALIK_DESEN = re.compile(
 
 
 def _tr_simdi() -> datetime:
-    """Türkiye saati (sunucu UTC olsa bile doğru çalışır)."""
     return datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=3)
 
 
 def _tr_kucult(metin: str) -> str:
-    """Türkçe karakter uyumlu küçük harfe çevirme."""
     if not metin:
         return ""
     replacements = {
@@ -554,29 +546,22 @@ def _tablo_satirlari(tablo) -> list:
     return sonuc
 
 
-def _bantlari_bul(soup) -> list:
+def _eczane_sayfasini_coz(html_metni: str, simdi: datetime = None):
+    simdi = simdi or _tr_simdi()
+    soup = BeautifulSoup(html_metni, "html.parser")
+
     bantlar = []
     for tag in soup.find_all(True):
         metin = tag.get_text(" ", strip=True)
         if len(metin) > 300:
             continue
         m = _ARALIK_DESEN.search(metin)
-        if not m:
-            continue
-        if any(
+        if m and not any(
             _ARALIK_DESEN.search(c.get_text(" ", strip=True))
             for c in tag.find_all(True)
         ):
-            continue
-        bantlar.append(m)
-    return bantlar
+            bantlar.append(m)
 
-
-def _eczane_sayfasini_coz(html_metni: str, simdi: datetime = None):
-    simdi = simdi or _tr_simdi()
-    soup = BeautifulSoup(html_metni, "html.parser")
-
-    bantlar = _bantlari_bul(soup)
     tablolar = [
         t for t in soup.find_all("table") if t.find("span", class_="isim")
     ]
@@ -587,15 +572,14 @@ def _eczane_sayfasini_coz(html_metni: str, simdi: datetime = None):
     for m, tablo in zip(bantlar, tablolar):
         ay = _AY.get(_tr_kucult(m.group(4)))
         bitis_gun = _yakin_tarih(int(m.group(3)), ay, simdi) if ay else None
-        if bitis_gun is None:
-            continue
-        paneller.append(
-            (
-                bitis_gun.replace(hour=9),
-                re.sub(r"\s+", " ", m.group(0)).strip(),
-                tablo,
+        if bitis_gun:
+            paneller.append(
+                (
+                    bitis_gun.replace(hour=9),
+                    re.sub(r"\s+", " ", m.group(0)).strip(),
+                    tablo,
+                )
             )
-        )
 
     paneller.sort(key=lambda p: p[0])
     for bitis, metin, tablo in paneller:
@@ -606,43 +590,97 @@ def _eczane_sayfasini_coz(html_metni: str, simdi: datetime = None):
     return [], "", None
 
 
+def _yedek_kaynaktan_cek(scraper) -> list:
+    """Ana kaynak (eczaneler.gen.tr) 403 verdiğinde çalışan yedek tarayıcı."""
+    try:
+        r = scraper.get(_YEDEK_ECZANE_URL, timeout=8)
+        if r.status_code != 200:
+            return []
+
+        soup = BeautifulSoup(r.text, "html.parser")
+        eczaneler = []
+
+        # Sayfadaki tüm metin bloklarını tara
+        for container in soup.find_all(["div", "article", "section"]):
+            text = container.get_text(" ", strip=True)
+            if "Adres:" in text and "Telefon:" in text:
+                # İsim ayıklama
+                h_tag = container.find(["h2", "h3", "h4", "strong", "b"])
+                isim = h_tag.get_text(strip=True) if h_tag else ""
+
+                if not isim or len(isim) > 50 or "ECZANE" not in isim.upper():
+                    continue
+
+                # Adres ve Telefon ayıklama
+                adres_m = re.search(r"Adres:\s*([^Telefon:]+)", text)
+                tel_m = _TEL_DESEN.search(text)
+
+                adres = adres_m.group(1).strip() if adres_m else "Darıca"
+                telefon = (
+                    _telefon_bicimle(tel_m.group(0)) if tel_m else "N/A"
+                )
+
+                eczaneler.append(
+                    {
+                        "isim": html.escape(isim),
+                        "adres": html.escape(adres),
+                        "telefon": html.escape(telefon),
+                        "gecerlilik": "Canlı Nöbetçi Eczane Listesi",
+                    }
+                )
+
+        # Mükerrerleri temizle
+        benzersiz = []
+        gorulen = set()
+        for e in eczaneler:
+            if e["isim"] not in gorulen:
+                benzersiz.append(e)
+                gorulen.add(e["isim"])
+
+        return benzersiz
+    except Exception as ex:
+        print(f"Yedek eczane kaynağı hatası: {ex}")
+        return []
+
+
 def get_nobetci_eczane() -> list:
-    """Darıca nöbetçi eczanelerini cloudscraper ile çeker."""
+    """Darıca nöbetçi eczanelerini çeker (Akıllı Çift Kaynak Mimarisi)."""
     simdi = _tr_simdi()
     zaman = time.time()
-
     c = _ECZANE_CACHE
+
     if (
         c["veri"]
         and zaman - c["zaman"] < _ECZANE_CACHE_SURE
-        and c["bitis"]
-        and simdi < c["bitis"]
+        and (c.get("bitis") is None or simdi < c["bitis"])
     ):
         return c["veri"]
-    if zaman - c["hata_zamani"] < _ECZANE_HATA_BEKLEME:
-        return []
 
+    scraper = cloudscraper.create_scraper(
+        browser={"browser": "chrome", "platform": "windows", "desktop": True}
+    )
+
+    # 1. DENEME: Ana Kaynak (eczaneler.gen.tr)
     try:
-        scraper = cloudscraper.create_scraper(
-            browser={
-                "browser": "chrome",
-                "platform": "windows",
-                "desktop": True,
-            }
-        )
-        r = scraper.get(_ECZANE_URL, timeout=10)
-
-        if r.status_code != 200:
-            print(f"Eczane kaynağı HTTP {r.status_code}: {_ECZANE_URL}")
-        else:
+        r = scraper.get(_ECZANE_URL, timeout=7)
+        if r.status_code == 200:
             liste, gecerlilik, bitis = _eczane_sayfasini_coz(r.text, simdi)
             if liste:
                 for e in liste:
                     e["gecerlilik"] = html.escape(gecerlilik)
                 c.update(zaman=zaman, bitis=bitis, veri=liste)
                 return liste
+        else:
+            print(
+                f"Ana eczane kaynağı HTTP {r.status_code} verdi, yedek kaynağa geçiliyor..."
+            )
     except Exception as e:
-        print(f"Eczane kaynağı hatası: {e}")
+        print(f"Ana kaynak bağlantı hatası: {e}, yedek kaynağa geçiliyor...")
 
-    c["hata_zamani"] = zaman
+    # 2. DENEME: Yedek Kaynak (Datacenter IP Engeli Olmayan Kaynak)
+    yedek_liste = _yedek_kaynaktan_cek(scraper)
+    if yedek_liste:
+        c.update(zaman=zaman, bitis=None, veri=yedek_liste)
+        return yedek_liste
+
     return []
