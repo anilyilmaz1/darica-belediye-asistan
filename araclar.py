@@ -414,9 +414,20 @@ def piyasa_verileri_getir() -> dict:
         
         if response.status_code == 200:
             data = response.json()
+            
             usd = data.get("USD", {}).get("Satış", "—")
             eur = data.get("EUR", {}).get("Satış", "—")
-            altin = data.get("Gram Altın", {}).get("Satış", "—")
+            
+            # Gram Altın için muhtemel anahtar isimlerinin tamamı kontrol edilir:
+            altin_data = (
+                data.get("Gram Altın") or 
+                data.get("gram-altin") or 
+                data.get("GRA") or 
+                {}
+            )
+            
+            altin = altin_data.get("Satış", "—") if isinstance(altin_data, dict) else "—"
+            
             return {"usd": usd, "eur": eur, "altin": altin}
     except Exception as e:
         print(f"Piyasa verisi çekilemedi: {e}")
