@@ -6,6 +6,7 @@ import streamlit.components.v1 as components
 from groq import Groq
 from weather import get_darica_weather
 from araclar import darica_hizmet_hesapla, tesis_bilgisi_sorgula, darica_son_dakika_haberleri, darica_web_arama, piyasa_verileri_getir
+from araclar import get_nobetci_eczane
 from datetime import datetime
 
 
@@ -65,6 +66,40 @@ with p_col2:
 
 with p_col3:
     st.metric(label="🪙 Gram Altın", value=f"{piyasa['altin']} TL")
+
+
+# --- NÖBETÇİ ECZANE BİLGİ KUTUSU ---
+eczane = get_nobetci_eczane()
+
+st.markdown(
+    f"""
+    <div style="
+        background-color: #FFF5F5;
+        border-left: 5px solid #E53935;
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-top: 15px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    ">
+        <div style="display: flex; align-items: center; margin-bottom: 4px;">
+            <span style="font-size: 18px; margin-right: 8px;">🏥</span>
+            <strong style="color: #C62828; font-size: 15px;">Darıca Bu Gece Nöbetçi Eczane</strong>
+        </div>
+        <div style="font-size: 15px; font-weight: bold; color: #2C3E50; margin-top: 4px;">
+            {eczane['isim']}
+        </div>
+        <div style="font-size: 13px; color: #555555; margin-top: 2px;">
+            📍 {eczane['adres']}
+        </div>
+        <div style="font-size: 13px; color: #1E88E5; margin-top: 4px; font-weight: 500;">
+            📞 <a href="tel:{eczane['telefon'].replace(' ', '')}" style="color: #1E88E5; text-decoration: none;">{eczane['telefon']}</a>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
 
 st.markdown("---") 
 
