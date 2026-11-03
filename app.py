@@ -85,6 +85,8 @@ with p_col3:
 eczaneler = get_nobetci_eczane()
 
 if eczaneler:
+    if eczaneler[0].get("gecerlilik"):
+        st.caption(f"🏥 Nöbet aralığı: {eczaneler[0]['gecerlilik']}. Yola çıkmadan önce telefonla teyit ediniz.")
     e_cols = st.columns(len(eczaneler))
 
     for idx, eczane in enumerate(eczaneler):
