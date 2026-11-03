@@ -5,7 +5,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from groq import Groq
 from weather import get_darica_weather
-from araclar import darica_hizmet_hesapla, tesis_bilgisi_sorgula, darica_son_dakika_haberleri, darica_web_arama
+from araclar import darica_hizmet_hesapla, tesis_bilgisi_sorgula, darica_son_dakika_haberleri, darica_web_arama, piyasa_verileri_getir
 from datetime import datetime
 
 
@@ -46,6 +46,25 @@ if weather:
             value="Darıca / Kocaeli", 
             delta="Canlı Veri"
         )
+
+
+# --- CANLI PİYASA VERİLERİ ---
+@st.cache_data(ttl=300)
+def get_piyasa():
+    return piyasa_verileri_getir()
+
+piyasa = get_piyasa()
+
+p_col1, p_col2, p_col3 = st.columns(3)
+
+with p_col1:
+    st.metric(label="🇺🇸 Dolar (USD/TL)", value=f"{piyasa['usd']} TL")
+
+with p_col2:
+    st.metric(label="🇪🇺 Euro (EUR/TL)", value=f"{piyasa['eur']} TL")
+
+with p_col3:
+    st.metric(label="🪙 Gram Altın", value=f"{piyasa['altin']} TL")
 
 st.markdown("---") 
 

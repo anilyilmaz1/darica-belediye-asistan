@@ -403,3 +403,22 @@ def darica_web_arama(sorgu: str, adet: int = 5):
     sonuc = ("\n".join(baglam), "\n".join(kaynaklar))
     _ARAMA_CACHE[onbellek_anahtari] = (time.time(), sonuc)
     return sonuc
+
+
+def piyasa_verileri_getir() -> dict:
+    """Canlı Dolar, Euro ve Gram Altın verilerini çeker."""
+    try:
+        url = "https://finans.truncgil.com/today.json"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, headers=headers, timeout=4)
+        
+        if response.status_code == 200:
+            data = response.json()
+            usd = data.get("USD", {}).get("Satış", "—")
+            eur = data.get("EUR", {}).get("Satış", "—")
+            altin = data.get("Gram Altın", {}).get("Satış", "—")
+            return {"usd": usd, "eur": eur, "altin": altin}
+    except Exception as e:
+        print(f"Piyasa verisi çekilemedi: {e}")
+        
+    return {"usd": "—", "eur": "—", "altin": "—"}
