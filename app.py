@@ -58,10 +58,10 @@ piyasa = get_piyasa()
 p_col1, p_col2, p_col3 = st.columns(3)
 
 with p_col1:
-    st.metric(label="🇺🇸 Dolar (USD/TL)", value=f"{piyasa['usd']} TL")
+    st.metric(label="Dolar (USD/TL)", value=f"{piyasa['usd']} TL")
 
 with p_col2:
-    st.metric(label="🇪🇺 Euro (EUR/TL)", value=f"{piyasa['eur']} TL")
+    st.metric(label="Euro (EUR/TL)", value=f"{piyasa['eur']} TL")
 
 with p_col3:
     st.metric(label="🪙 Gram Altın", value=f"{piyasa['altin']} TL")
