@@ -25,6 +25,19 @@ st.set_page_config(
     layout="wide"
 )
 
+st.markdown(
+    """
+    <style>
+        .block-container {
+            padding-top: 1.2rem !important;
+            padding-bottom: 1rem !important;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 # Canlı Hava Durumu Gösterimi
 weather = get_darica_weather()
 
@@ -68,38 +81,51 @@ with p_col3:
     st.metric(label="🪙 Gram Altın", value=f"{piyasa['altin']} TL")
 
 
-# --- NÖBETÇİ ECZANE BİLGİ KUTUSU ---
-eczane = get_nobetci_eczane()
+# --- NÖBETÇİ ECZANELER (YAN YANA KARTLAR) ---
+eczaneler = get_nobetci_eczane()
 
-st.markdown(
-    f"""
-    <div style="
-        background-color: #FFF5F5;
-        border-left: 5px solid #E53935;
-        padding: 12px 16px;
-        border-radius: 8px;
-        margin-top: 15px;
-        margin-bottom: 20px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    ">
-        <div style="display: flex; align-items: center; margin-bottom: 4px;">
-            <span style="font-size: 18px; margin-right: 8px;">🏥</span>
-            <strong style="color: #C62828; font-size: 15px;">Darıca Bu Gece Nöbetçi Eczane</strong>
-        </div>
-        <div style="font-size: 15px; font-weight: bold; color: #2C3E50; margin-top: 4px;">
-            {eczane['isim']}
-        </div>
-        <div style="font-size: 13px; color: #555555; margin-top: 2px;">
-            📍 {eczane['adres']}
-        </div>
-        <div style="font-size: 13px; color: #1E88E5; margin-top: 4px; font-weight: 500;">
-            📞 <a href="tel:{eczane['telefon'].replace(' ', '')}" style="color: #1E88E5; text-decoration: none;">{eczane['telefon']}</a>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+if eczaneler:
+    e_cols = st.columns(len(eczaneler))
 
+    for idx, eczane in enumerate(eczaneler):
+        with e_cols[idx]:
+            st.markdown(
+                f"""
+                <div style="
+                    background-color: #FFF5F5;
+                    border-left: 5px solid #E53935;
+                    padding: 12px 16px;
+                    border-radius: 8px;
+                    margin-top: 10px;
+                    margin-bottom: 15px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                    min-height: 140px;
+                ">
+                    <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                        <span style="font-size: 18px; margin-right: 8px;">🏥</span>
+                        <strong style="color: #C62828; font-size: 14px;">Darıca Nöbetçi Eczane #{idx+1}</strong>
+                    </div>
+                    <div style="font-size: 15px; font-weight: bold; color: #2C3E50; margin-top: 4px;">
+                        {eczane['isim']}
+                    </div>
+                    <div style="font-size: 13px; color: #555555; margin-top: 2px;">
+                        📍 {eczane['adres']}
+                    </div>
+                    <div style="font-size: 13px; color: #1E88E5; margin-top: 6px; font-weight: 500;">
+                        📞 <a href="tel:{eczane['telefon'].replace(' ', '')}" style="color: #1E88E5; text-decoration: none;">{eczane['telefon']}</a>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+else:
+    # Veri çekilemediğinde kullanıcıya gösterilecek güvenli uyarı mesajı
+    st.info(
+        "🏥 **Nöbetçi Eczane Bilgisi:** Anlık nöbetçi eczane verisi sunucudan"
+        " alınamadı. En güncel bilgi için lütfen Kocaeli Eczacı Odası veya 112"
+        " hattı üzerinden teyit ediniz."
+    )
 
 st.markdown("---") 
 
