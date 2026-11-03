@@ -6,4 +6,3 @@ python-dotenv
 ddgs
 beautifulsoup4
 feedparser
-cloudscraper

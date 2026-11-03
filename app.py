@@ -154,8 +154,8 @@ with st.sidebar:
     st.caption("• Bayramoğlu'ndaki Kent Müzesi hangi gün kapalı?")
     st.caption("• Hafta sonu nikah kıydırma ücreti ne kadar?")
     st.caption("• 70 yaşındaki biri spor tesisinden indirim alabilir mi?")
-    st.caption("• 🌐 *Darıca metrosu ne zaman açılacak?* (Web Search)")
-    st.caption("• 🌐 *Darıca Millet Bahçesi'nde bu hafta ne var?* (Web Search)")
+    st.caption("• Darıca metrosu ne zaman açılacak?")
+    st.caption("• Darıca Millet Bahçesi'nde bu hafta ne var?")
     
     st.divider()
     st.markdown("""
@@ -183,9 +183,7 @@ def kaynaklari_yukle():
                     continue
         except Exception as e:
             st.error(f"PDF okunurken hata oluştu: {e}")
-            
-    pdf_text = pdf_text.replace("Martıkent", "Darıca").replace("Martıkent Cebimde", "Darıca Belediyesi Mobil Uygulaması")
-        
+                    
     api_key = os.environ.get("GROQ_API_KEY")
     groq_client = Groq(api_key=api_key) if api_key else None
     
@@ -267,137 +265,61 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     p_lower = prompt.lower()
     
-    # 1. Kapsam Dışı / Başka Şehir Kontrolü
-    baska_kurumlar = ["kadıköy", "kadikoy", "üsküdar", "izmit", "gebze", "istanbul büyükşehir", "ankara"]
-    if any(kurum in p_lower for kurum in baska_kurumlar):
-        cevap = "Ben yalnızca Darıca Belediyesi hizmetleri için özelleştirilmiş bir AI asistanıyım. Başka belediyeler veya farklı şehirler hakkında bilgi verememekteyim."
+    # 1. Yaş ve Tesis / Hesaplama Parametreleri
+    yas_match = re.search(r'(\d+)\s*(yaş|yaşında)', p_lower)
+    yas = int(yas_match.group(1)) if yas_match else 0
+    
+    tesis_anahtarlari = [
+        "havuz", "yüzme", "kütüphane", "tenis", "buz pateni", 
+        "fitness", "paten", "bakımevi", "barınak", "etüt", "salon", "kültür merkezi"
+    ]
+    is_tesis_sorgusu = any(k in p_lower for k in tesis_anahtarlari)
 
-    else:
-        yas_match = re.search(r'(\d+)\s*(yaş|yaşında)', p_lower)
-        yas = int(yas_match.group(1)) if yas_match else 0
+    is_hesaplama_sorgusu = any(kw in p_lower for kw in ["hesapla", "indirim", "atık yağ", "deterjan", "karavan", "otopark"]) or (
+        any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl"]) and 
+        any(h in p_lower for h in ["nikah", "otopark", "karavan", "su", "atık"])
+    )
+
+    # 2. Ajan: Hesaplama & İndirim
+    if not is_tesis_sorgusu and (is_hesaplama_sorgusu or yas > 0):
+        hizmet_tipi = "genel"
+        if "nikah" in p_lower:
+            hizmet_tipi = "nikah"
+        elif "otopark" in p_lower or "karavan" in p_lower:
+            hizmet_tipi = "otopark"
+        elif "atık" in p_lower or "yağ" in p_lower or "deterjan" in p_lower:
+            hizmet_tipi = "atık"
+        elif re.search(r'\bsu(yu|yun|ya|da|dan)?\b', p_lower):
+            hizmet_tipi = "su"
+        elif "spor" in p_lower:
+            hizmet_tipi = "spor"
         
-        tesis_anahtarlari = [
-            "havuz", "yüzme", "kütüphane", "tenis", "buz pateni", 
-            "fitness", "paten", "bakımevi", "barınak", "etüt", "salon", "kültür merkezi"
-        ]
-        is_tesis_sorgusu = any(k in p_lower for k in tesis_anahtarlari)
+        hesaplanan = darica_hizmet_hesapla(hizmet_tipi=hizmet_tipi, parametre=prompt, yas=yas)
+        cevap = f"🛠️ **[Ajan Tetiklendi: darica_hizmet_hesapla]** (Hizmet: {hizmet_tipi})\n\nDarıca Belediyesi güncel tarifelerine göre:\n\n**{hesaplanan}**"
 
-        is_hesaplama_sorgusu = any(kw in p_lower for kw in ["hesapla", "indirim", "atık yağ", "deterjan", "karavan", "otopark"]) or (
-            any(kw in p_lower for kw in ["ücret", "fiyat", "ne kadar", "kaç tl"]) and 
-            any(h in p_lower for h in ["nikah", "otopark", "karavan", "su", "atık"])
-        )
+    # 3. Ajan: Tesis Sorgusu
+    elif is_tesis_sorgusu or any(kw in p_lower for kw in ["çalışma saati", "saat kaç", "kaça kadar", "açılış saati", "kapanış saati", "hangi gün kapalı"]):
+        hesaplanan = tesis_bilgisi_sorgula(prompt)
+        cevap = f"🛠️ **[Ajan Tetiklendi: tesis_bilgisi_sorgula]**\n\nDarıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
 
-        # 2. Ajan: Hesaplama & İndirim
-        if not is_tesis_sorgusu and (is_hesaplama_sorgusu or yas > 0):
-            hizmet_tipi = "genel"
-            if "nikah" in p_lower:
-                hizmet_tipi = "nikah"
-            elif "otopark" in p_lower or "karavan" in p_lower:
-                hizmet_tipi = "otopark"
-            elif "atık" in p_lower or "yağ" in p_lower or "deterjan" in p_lower:
-                hizmet_tipi = "atık"
-            elif re.search(r'\bsu(yu|yun|ya|da|dan)?\b', p_lower):
-                hizmet_tipi = "su"
-            elif "spor" in p_lower:
-                hizmet_tipi = "spor"
-            
-            hesaplanan = darica_hizmet_hesapla(hizmet_tipi=hizmet_tipi, parametre=prompt, yas=yas)
-            cevap = f"🛠️ **[Ajan Tetiklendi: darica_hizmet_hesapla]** (Hizmet: {hizmet_tipi})\n\nDarıca Belediyesi güncel tarifelerine göre:\n\n**{hesaplanan}**"
-
-        # 3. Ajan: Tesis Sorgusu
-        elif is_tesis_sorgusu or any(kw in p_lower for kw in ["çalışma saati", "saat kaç", "kaça kadar", "açılış saati", "kapanış saati", "hangi gün kapalı"]):
-            hesaplanan = tesis_bilgisi_sorgula(prompt)
-            cevap = f"🛠️ **[Ajan Tetiklendi: tesis_bilgisi_sorgula]**\n\nDarıca Belediyesi tesis veritabanı sorgu sonucu:\n\n{hesaplanan}"
-
-
-       # 3.5. Ajan: Yerel Haber Ajanı
-        elif any(kw in p_lower for kw in ["son dakika", "yerel haber", "gündem"]):
-            haber_metni = darica_son_dakika_haberleri()
-            
-            if haber_metni:
-                cevap = f"🛠️ **[Ajan Tetiklendi: yerel_haber_ajani]**\n\nDarıca yerel basından öne çıkan son başlıklar:\n\n{haber_metni}"
-            else:
-                # Siteden veri çekilemezse yedek olarak Web Search ajanına yönlendirilir
-                web_sonuclari, _ = web_arama_yap(prompt)
-                if web_sonuclari and "darıca" in web_sonuclari.lower() and groq_client:
-                    system_prompt = (
-                        "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n"
-                        "Aşağıdaki arama sonuçlarından yalnızca Darıca (Kocaeli) ile ilgili güncel haberleri kısaca özetle.\n"
-                        "Darıca ile ilgili haber yoksa uydurma, bunu açıkça söyle.\n"
-                        "Yanıtta 'CANLI WEB ARAMA SONUÇLARI' gibi iç sistem ifadelerini KULLANMA."
-                    )
-                    user_content = f"[CANLI WEB ARAMA SONUÇLARI]:\n{web_sonuclari}\n\n[SORU]: {prompt}"
-                    
-                    try:
-                        completion = groq_client.chat.completions.create(
-                            model="qwen/qwen3.8-27b",
-                            messages=[
-                                {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": user_content}
-                            ],
-                            temperature=0.2,
-                            max_tokens=400
-                        )
-                        raw_cevap = completion.choices[0].message.content.strip()
-                        cevap = f"🛠️ **[Ajan Tetiklendi: web_arama_ajani]**\n\n{raw_cevap}"
-                    except Exception:
-                        cevap = "Şu anda güncel haber servisine ulaşılamıyor. Detaylı bilgi için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz."
-                else:
-                    cevap = "Şu anda güncel haber servisine ulaşılamıyor. Detaylı bilgi için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz."
-
-
-        # 4. RAG / Web Search / LLM
+    # 4. Ajan: Yerel Haber Ajanı
+    elif any(kw in p_lower for kw in ["son dakika", "yerel haber", "gündem"]):
+        haber_metni = darica_son_dakika_haberleri()
+        
+        if haber_metni:
+            cevap = f"🛠️ **[Ajan Tetiklendi: yerel_haber_ajani]**\n\nDarıca yerel basından öne çıkan son başlıklar:\n\n{haber_metni}"
         else:
-            ilgili_baglam = en_ilgili_paragrafi_bul(rehber_metni, prompt)
-            web_sonuclari = ""
-            ajan_etiketi = ""
-
-            # Darıca, metro, ulaşım, projeler ve güncel aramalarda Web Search'ü çalıştır
-            darica_ilgili = any(k in p_lower for k in ["darıca", "belediye", "millet bahçesi", "sahil", "baskan", "başkan", "muhtar", "kaymakam", "kocaeli", "mahalle", "sokak", "metro", "ulaşım", "otobüs", "proje", "parti", "bakan"])
-            guncel_kelime = any(kw in p_lower for kw in ["haber", "etkinlik", "son dakika", "bugün", "duyuru", "nedir", "son haber", "ne var", "program", "ne zaman", "açılacak", "açılış", "asfalt", "yol", "çalışma", "bitti mi", "ne durumda"])
-
-            kaynaklar = ""
-            arama_yapildi = False
-
-            if (not ilgili_baglam and darica_ilgili) or guncel_kelime:
-                arama_yapildi = True
-                with st.spinner("Güncel kaynaklar aranıyor..."):
-                    web_sonuclari, kaynaklar = web_arama_yap(prompt)
-                if web_sonuclari:
-                    ajan_etiketi = "🛠️ **[Ajan Tetiklendi: web_arama_ajani]**\n\n"
-
-            if arama_yapildi and not web_sonuclari and not ilgili_baglam:
-                # Kaynak yoksa modele cevap uydurtma
-                cevap = ("Bu konuda güncel bir kaynak bulamadım. Kesin bilgi için 153 Beyaz Masa "
-                         "hattımızı arayabilir veya darica.bel.tr adresini ziyaret edebilirsiniz.")
-            elif not groq_client:
-                cevap = "⚠️ Sistem şu anda yanıt üretemiyor (Groq API anahtarı ayarlanmamış)."
-            else:
-                # Esnek ve Doğru Kapsam Belirleyen Sistem İstemcisi
-                if web_sonuclari:
-                    system_prompt = (
-                        "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n"
-                        f"Bugünün tarihi: {datetime.now().strftime('%d.%m.%Y')}.\n"
-                        "KURALLAR:\n"
-                        "1. Darıca, Kocaeli iline bağlıdır; İstanbul veya İBB ile ilgisi yoktur. Ulaşım sorularında Kocaeli Büyükşehir Belediyesi veya Ulaştırma ve Altyapı Bakanlığı'nı referans göster.\n"
-                        "2. Yalnızca aşağıdaki arama sonuçlarındaki bilgilere dayan. Sonuçlar sorunun cevabını içermiyorsa bunu açıkça söyle, tahmin yürütme.\n"
-                        "3. Haberin tarihini belirt. 1 aydan eski bir haberi 'güncel' diye sunma.\n"
-                        "4. Sonuçlarda yazmayan telefon numarası, tarih, rakam ve link ASLA uydurma. Gerekirse vatandaşı 153 Beyaz Masa hattına yönlendir.\n"
-                        "5. '[CANLI WEB ARAMA SONUÇLARI]' veya '[REHBER BİLGİSİ]' gibi iç sistem ifadelerini KULLANMA; vatandaşa doğal, kısa ve kurumsal bir dille yaz."
-                    )
-                else:
-                    system_prompt = (
-                        "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n\n"
-                        "KESİNLİKLE UYULMASI GEREKEN KURALLAR:\n"
-                        "1. Yanıtının içinde 'CANLI WEB ARAMA SONUÇLARI', 'REHBER BİLGİSİ' veya 'Arama sonuçları incelendiğinde' gibi TEKNİK SİSTEM İFADELERİNİ KESİNLİKLE KULLANMA!\n"
-                        "2. Sana sağlanan metinde Darıca dışındaki başka şehirler (Hatay, İstanbul vb.) varsa onları tamamen yok say.\n"
-                        "3. Eğer Darıca ile ilgili somut bir haber verisi yoksa doğrudan şu cevabı ver: 'Şu anda güncel yerel haber akışına ulaşılamamaktadır. Darıca ile ilgili duyuru ve haberler için darica.bel.tr adresini veya belediyemizin resmi sosyal medya hesaplarını takip edebilirsiniz.'\n"
-                        "4. Vatandaşa doğrudan, samimi ve kurumsal bir dille yanıt ver."
-                    )
-
-                baglam_metni = f"[REHBER BİLGİSİ]:\n{ilgili_baglam}\n\n[CANLI WEB ARAMA SONUÇLARI]:\n{web_sonuclari}"
-                user_content = f"{baglam_metni}\n\n[SORU]: {prompt}"
-
+            # Siteden veri çekilemezse yedek olarak Web Search ajanına yönlendirilir
+            web_sonuclari, _ = web_arama_yap(prompt)
+            if web_sonuclari and "darıca" in web_sonuclari.lower() and groq_client:
+                system_prompt = (
+                    "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n"
+                    "Aşağıdaki arama sonuçlarından yalnızca Darıca (Kocaeli) ile ilgili güncel haberleri kısaca özetle.\n"
+                    "Darıca ile ilgili haber yoksa uydurma, bunu açıkça söyle.\n"
+                    "Yanıtta 'CANLI WEB ARAMA SONUÇLARI' gibi iç sistem ifadelerini KULLANMA."
+                )
+                user_content = f"[CANLI WEB ARAMA SONUÇLARI]:\n{web_sonuclari}\n\n[SORU]: {prompt}"
+                
                 try:
                     completion = groq_client.chat.completions.create(
                         model="qwen/qwen3.8-27b",
@@ -409,12 +331,83 @@ if prompt := st.chat_input("Sorunuzu yazınız..."):
                         max_tokens=400
                     )
                     raw_cevap = completion.choices[0].message.content.strip()
-                    cevap = f"{ajan_etiketi}{raw_cevap}" if raw_cevap else "Darıca Metro projesi ve güncel ulaşım bilgileri için Kocaeli Büyükşehir Belediyesi veya Ulaştırma ve Altyapı Bakanlığı duyurularını takip edebilir, 153 Beyaz Masa hattından detay alabilirsiniz."
-                    if kaynaklar:
-                        cevap += f"\n\n📎 **Kaynaklar:**\n\n{kaynaklar}"
+                    cevap = f"🛠️ **[Ajan Tetiklendi: web_arama_ajani]**\n\n{raw_cevap}"
+                except Exception:
+                    cevap = "Şu anda güncel haber servisine ulaşılamıyor. Detaylı bilgi için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz."
+            else:
+                cevap = "Şu anda güncel haber servisine ulaşılamıyor. Detaylı bilgi için 153 Beyaz Masa hattımız ile iletişime geçebilirsiniz."
 
-                except Exception as e:
-                    cevap = f"Bir hata oluştu: {str(e)}"
+    # 5. RAG / Web Search / LLM (Genel Akış)
+    else:
+        ilgili_baglam = en_ilgili_paragrafi_bul(rehber_metni, prompt)
+        web_sonuclari = ""
+        ajan_etiketi = ""
+
+        # Darıca, metro, ulaşım, projeler ve güncel aramalarda Web Search'ü çalıştır
+        darica_ilgili = any(k in p_lower for k in ["darıca", "belediye", "millet bahçesi", "sahil", "baskan", "başkan", "muhtar", "kaymakam", "kocaeli", "mahalle", "sokak", "metro", "ulaşım", "otobüs", "proje", "parti", "bakan"])
+        guncel_kelime = any(kw in p_lower for kw in ["haber", "etkinlik", "son dakika", "bugün", "duyuru", "nedir", "son haber", "ne var", "program", "ne zaman", "açılacak", "açılış", "asfalt", "yol", "çalışma", "bitti mi", "ne durumda"])
+
+        kaynaklar = ""
+        arama_yapildi = False
+
+        if (not ilgili_baglam and darica_ilgili) or guncel_kelime:
+            arama_yapildi = True
+            with st.spinner("Güncel kaynaklar aranıyor..."):
+                web_sonuclari, kaynaklar = web_arama_yap(prompt)
+            if web_sonuclari:
+                ajan_etiketi = "🛠️ **[Ajan Tetiklendi: web_arama_ajani]**\n\n"
+
+        if arama_yapildi and not web_sonuclari and not ilgili_baglam:
+            # Kaynak yoksa modele cevap uydurtma
+            cevap = ("Bu konuda güncel bir kaynak bulamadım. Kesin bilgi için 153 Beyaz Masa "
+                     "hattımızı arayabilir veya darica.bel.tr adresini ziyaret edebilirsiniz.")
+        elif not groq_client:
+            cevap = "⚠️ Sistem şu anda yanıt üretemiyor (Groq API anahtarı ayarlanmamış)."
+        else:
+            # Akıllı & Esnek Kapsam Yönetimi Sağlayan Gelişmiş Sistem İstemleri
+            if web_sonuclari:
+                system_prompt = (
+                    "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n"
+                    f"Bugünün tarihi: {datetime.now().strftime('%d.%m.%Y')}.\n\n"
+                    "KURALLAR VE KAPSAM:\n"
+                    "1. KAPSAM: Yalnızca Darıca Belediyesi hizmetleri, tesisleri, projeleri ve Darıca'ya/Darıca'dan olan ulaşım konularında bilgi ver. Doğrudan başka bir belediyenin (örn: Kadıköy veya Ankara Belediyesi) iç hizmetleri sorulursa nazikçe sadece Darıca Belediyesi ve Darıca ulaşımında yardımcı olabileceğini belirt.\n"
+                    "2. ULAŞIM: Darıca, Kocaeli iline bağlıdır; İstanbul veya İBB ile kurumsal bağı yoktur. Metro ve ulaşım sorularında Kocaeli Büyükşehir Belediyesi veya Ulaştırma ve Altyapı Bakanlığı'nı referans göster.\n"
+                    "3. DOĞRULUK: Yalnızca aşağıdaki arama sonuçlarındaki bilgilere dayan. Cevap bulamıyorsan uydurma, açıkça ulaşılamadığını söyle.\n"
+                    "4. GÜNCELLİK: Haberin tarihini belirt. 1 aydan eski haberleri 'güncel' diye sunma.\n"
+                    "5. UYDURMA ENGELİ: Sonuçlarda geçmeyen telefon, rakam, link veya kişi adı UYDURMA. Gerekirse vatandaşı 153 Beyaz Masa hattına yönlendir.\n"
+                    "6. TEKNİK DİL ENGELİ: '[CANLI WEB ARAMA SONUÇLARI]' veya '[REHBER BİLGİSİ]' gibi iç sistem ifadelerini yanıtında KESİNLİKLE KULLANMA. Kurumsal, samimi ve net konuş."
+                )
+            else:
+                system_prompt = (
+                    "Sen Darıca Belediyesi'nin resmi AI vatandaş asistanısın.\n\n"
+                    "KURALLAR VE KAPSAM:\n"
+                    "1. KAPSAM: Yalnızca Darıca Belediyesi hizmetleri, tesisleri, projeleri ve Darıca'ya/Darıca'dan olan ulaşım konularında bilgi ver. Doğrudan başka belediyelerin iç hizmetleri sorulursa nazikçe sadece Darıca Belediyesi ve Darıca ulaşımında destek sunabileceğini belirt.\n"
+                    "2. TEKNİK SİSTEM İFADELERİ: Yanıtının içinde 'CANLI WEB ARAMA SONUÇLARI', 'REHBER BİLGİSİ' veya 'Arama sonuçları incelendiğinde' gibi teknik ifadeleri KESİNLİKLE KULLANMA!\n"
+                    "3. DOĞRULUK: Sağlanan metinde Darıca dışındaki bağımsız şehir verileri varsa yok say.\n"
+                    "4. VERİ YOKSA: Eğer Darıca ile ilgili somut bir rehber/veri bulunamıyorsa uydurma; vatandaşa doğrudan 153 Beyaz Masa hattını veya darica.bel.tr adresini tavsiye et.\n"
+                    "5. DİL: Vatandaşa doğrudan, kurumsal ve yardımsever bir dille hitap et."
+                )
+
+            baglam_metni = f"[REHBER BİLGİSİ]:\n{ilgili_baglam}\n\n[CANLI WEB ARAMA SONUÇLARI]:\n{web_sonuclari}"
+            user_content = f"{baglam_metni}\n\n[SORU]: {prompt}"
+
+            try:
+                completion = groq_client.chat.completions.create(
+                    model="qwen/qwen3.8-27b",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_content}
+                    ],
+                    temperature=0.2,
+                    max_tokens=400
+                )
+                raw_cevap = completion.choices[0].message.content.strip()
+                cevap = f"{ajan_etiketi}{raw_cevap}" if raw_cevap else "Darıca Belediyesi hizmetleri ve ulaşım bilgileri için 153 Beyaz Masa hattımızdan detay alabilirsiniz."
+                if kaynaklar:
+                    cevap += f"\n\n📎 **Kaynaklar:**\n\n{kaynaklar}"
+
+            except Exception as e:
+                cevap = f"Bir hata oluştu: {str(e)}"
 
     st.session_state.messages.append({"role": "assistant", "content": cevap})
     st.rerun()
